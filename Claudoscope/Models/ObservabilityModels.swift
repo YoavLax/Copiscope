@@ -136,6 +136,7 @@ struct SessionObservability: Sendable {
     let compactionTimestamps: [String]
     let parallelToolCallCount: Int
     let maxParallelDegree: Int
+    let isWorktreeSession: Bool
 
     static let empty = SessionObservability(
         medianTurnDurationMs: nil,
@@ -147,7 +148,8 @@ struct SessionObservability: Sendable {
         estimatedIdleWasteCost: 0,
         compactionTimestamps: [],
         parallelToolCallCount: 0,
-        maxParallelDegree: 0
+        maxParallelDegree: 0,
+        isWorktreeSession: false
     )
 }
 
