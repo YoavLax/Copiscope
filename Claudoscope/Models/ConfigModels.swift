@@ -108,6 +108,7 @@ struct ClaudeProfile: Sendable {
 struct ExtendedConfig: Sendable {
     let sandbox: SandboxConfig?
     let skipDangerousModePermissionPrompt: Bool
+    let disableSkillShellExecution: Bool
     let attribution: AttributionConfig?
     let plugins: [PluginInfo]
     let marketplaces: [MarketplaceSource]

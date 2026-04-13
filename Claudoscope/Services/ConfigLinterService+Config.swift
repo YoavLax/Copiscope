@@ -106,6 +106,20 @@ extension ConfigLinterService {
             ))
         }
 
+        // CFG007: disableSkillShellExecution not enabled (only flag when plugins are present)
+        let hasPlugins = json["enabledPlugins"] as? [String: Any] != nil
+            || json["skippedPlugins"] as? [Any] != nil
+        if hasPlugins && json["disableSkillShellExecution"] as? Bool != true {
+            results.append(LintResult(
+                severity: .info,
+                checkId: .CFG007,
+                filePath: settingsPath,
+                message: "Skill shell execution is enabled. Installed plugins can execute arbitrary shell commands via Bash tool.",
+                fix: "Add \"disableSkillShellExecution\": true to settings.json to restrict skill shell execution",
+                displayPath: "settings.json"
+            ))
+        }
+
         return results
     }
 }
