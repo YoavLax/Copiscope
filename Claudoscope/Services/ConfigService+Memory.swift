@@ -73,6 +73,7 @@ extension ConfigService {
         }
 
         let yolo = settings["skipDangerousModePermissionPrompt"] as? Bool ?? false
+        let disableSkillShell = settings["disableSkillShellExecution"] as? Bool ?? false
 
         // Attribution
         let attribution: AttributionConfig?
@@ -161,6 +162,7 @@ extension ConfigService {
         return ExtendedConfig(
             sandbox: sandbox,
             skipDangerousModePermissionPrompt: yolo,
+            disableSkillShellExecution: disableSkillShell,
             attribution: attribution,
             plugins: plugins,
             marketplaces: marketplaces,

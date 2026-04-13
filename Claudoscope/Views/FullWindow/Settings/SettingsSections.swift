@@ -189,6 +189,7 @@ extension SettingsMainPanelView {
         let sandbox = ext?.sandbox
         let hasUnsandboxed = !(sandbox?.unsandboxedCommands ?? []).isEmpty
         let weakerSandbox = sandbox?.enableWeakerNestedSandbox ?? false
+        let skillShellDisabled = ext?.disableSkillShellExecution ?? false
         let isDefault = !yolo && !hasUnsandboxed && !weakerSandbox
 
         settingsSection(id: "security", icon: "lock.shield", title: "Security") {
@@ -236,6 +237,18 @@ extension SettingsMainPanelView {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 11))
                         Text("Weaker nested sandbox enabled")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundStyle(.yellow)
+                    .padding(.horizontal, 12)
+                }
+
+                let hasPlugins = !(ext?.plugins ?? []).isEmpty
+                if hasPlugins && !skillShellDisabled {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 11))
+                        Text("Skill shell execution is enabled")
                             .font(.system(size: 12))
                     }
                     .foregroundStyle(.yellow)
@@ -290,7 +303,7 @@ extension SettingsMainPanelView {
         let knownTopLevel: Set<String> = [
             "model", "smallFastModel", "permissions",
             "env", "hooks",
-            "sandbox", "skipDangerousModePermissionPrompt",
+            "sandbox", "skipDangerousModePermissionPrompt", "disableSkillShellExecution",
             "attribution", "includeCoAuthoredBy",
             "autoUpdatesChannel",
             "enabledPlugins", "extraKnownMarketplaces",

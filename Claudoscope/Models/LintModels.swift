@@ -61,6 +61,7 @@ enum LintCheckId: String, Sendable, CaseIterable {
     case CFG004  // allowedChannelPlugins for enterprise
     case CFG005  // bare mode with hooks/MCP configured
     case CFG006  // CLAUDE_CODE_SUBPROCESS_ENV_SCRUB not set
+    case CFG007  // disableSkillShellExecution not set
 
     // Secret detection checks
     case SEC001  // private key

@@ -184,6 +184,10 @@ let ruleMetadata: [LintCheckId: RuleMetadata] = [
         displayName: "Subprocess env scrub not enabled",
         hint: "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is not set. Credentials from your shell environment may leak into Bash tool, hooks, and MCP server subprocesses."
     ),
+    .CFG007: RuleMetadata(
+        displayName: "Skill shell execution enabled",
+        hint: "disableSkillShellExecution is not set. Skills can invoke shell commands through the Bash tool. Set to true in settings.json to restrict this."
+    ),
 ]
 
 struct CategoryDef: Identifiable {
