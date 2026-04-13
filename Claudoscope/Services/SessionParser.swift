@@ -222,6 +222,7 @@ actor SessionParser {
         var turnIndex = 0
         var hadCompactionSinceLast = false
         var turnsSinceLastCompaction = 0
+        var hasWorktreeTool = false
         var allRecords: [ParsedRecordRaw] = []
 
         let isoFormatter = ISO8601DateFormatter()
@@ -270,6 +271,9 @@ actor SessionParser {
                         let toolUseBlocks = blocks.filter { $0.type == "tool_use" }
                         toolCallCount += toolUseBlocks.count
                         turnToolNames = toolUseBlocks.compactMap(\.name)
+                        if !hasWorktreeTool && turnToolNames.contains(where: { $0 == "EnterWorktree" || $0 == "ExitWorktree" }) {
+                            hasWorktreeTool = true
+                        }
                     }
 
                     if raw.message?.stopReason != nil, let usage = raw.message?.usage {
@@ -437,7 +441,8 @@ actor SessionParser {
             errorDetails: errorDetails,
             idleGapResult: idleGapResult,
             compactionEvents: compactionEvents,
-            parallelToolGroups: parallelToolGroups
+            parallelToolGroups: parallelToolGroups,
+            isWorktreeSession: hasWorktreeTool
         )
 
         return SessionSummary(

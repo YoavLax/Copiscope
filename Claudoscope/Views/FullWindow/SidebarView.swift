@@ -272,6 +272,13 @@ private struct SessionRow: View {
                             .help("Session resumed after 75+ min idle without /clear")
                     }
 
+                    if session.observability.isWorktreeSession {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.cyan)
+                            .help("Session uses a git worktree")
+                    }
+
                     if let model = session.primaryModel {
                         let family = getModelFamily(model)
                         Spacer()

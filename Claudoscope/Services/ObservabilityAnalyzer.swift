@@ -167,7 +167,8 @@ struct ObservabilityAnalyzer {
         errorDetails: [SessionErrorDetail],
         idleGapResult: IdleGapResult,
         compactionEvents: [CompactionEvent],
-        parallelToolGroups: [ParallelToolGroup]
+        parallelToolGroups: [ParallelToolGroup],
+        isWorktreeSession: Bool = false
     ) -> SessionObservability {
         // Median and max turn duration
         let validDurations = turnDurations.filter { $0.durationMs > 0 }
@@ -230,7 +231,8 @@ struct ObservabilityAnalyzer {
             estimatedIdleWasteCost: 0,
             compactionTimestamps: compactionTimestamps,
             parallelToolCallCount: parallelToolCallCount,
-            maxParallelDegree: maxParallelDegree
+            maxParallelDegree: maxParallelDegree,
+            isWorktreeSession: isWorktreeSession
         )
     }
 
