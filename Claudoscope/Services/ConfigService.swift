@@ -10,6 +10,7 @@ actor ConfigService {
     static let hookEventNames = [
         "PreToolUse",
         "PostToolUse",
+        "PermissionDenied",
         "SessionStart",
         "Stop",
         "UserPromptSubmit",

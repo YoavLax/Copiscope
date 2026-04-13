@@ -83,6 +83,7 @@ private struct HookEventRow: View {
         switch event {
         case "PreToolUse": return "arrow.right.to.line"
         case "PostToolUse": return "arrow.left.to.line"
+        case "PermissionDenied": return "hand.raised.slash"
         case "SessionStart": return "play.circle"
         case "Stop": return "stop.circle"
         case "UserPromptSubmit": return "paperplane"
