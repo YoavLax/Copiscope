@@ -118,7 +118,7 @@ All tabs share a time range selector (7/30/90 days or custom) and an optional pr
 
 ### Sessions
 
-The sessions view is the core session explorer. The sidebar lists all projects discovered under `~/.claude/projects/`, with sessions grouped by project. Selecting a session loads the full conversation in the main panel.
+The sessions view is the core session explorer. The sidebar lists all projects discovered under `~/.claude/projects/`, with sessions grouped by project. Each session row shows inline badges for observability signals: error indicators (rate limits, auth failures, tool errors), idle/zombie gap warnings, and git worktree markers. Selecting a session loads the full conversation in the main panel.
 
 The chat view renders the complete conversation thread with:
 
@@ -143,7 +143,7 @@ The timeline view shows a chronological history of Claude Code activity across a
 
 ### Hooks
 
-The hooks view reads your Claude Code hook configuration and displays all registered hooks grouped by event type (e.g., `PreToolUse`, `PostToolUse`, `Notification`). Each hook entry shows its matcher pattern, the command it runs, and its timeout setting.
+The hooks view reads your Claude Code hook configuration and displays all registered hooks grouped by event type: `PreToolUse`, `PostToolUse`, `PermissionDenied`, `SessionStart`, `Stop`, `UserPromptSubmit`, and `Notification`. Each hook entry shows its matcher pattern, the command it runs, and its timeout setting.
 
 ### Commands
 
@@ -165,7 +165,7 @@ The memory view lists all CLAUDE.md and memory files that Claude Code uses for p
 
 ### Config Health
 
-The config health view runs 19 lint rules against your Claude Code configuration (CLAUDE.md files, rules, and skills) and reports issues that may affect how Claude interprets your instructions.
+The config health view runs 45 lint rules across your Claude Code configuration, sessions, and security posture, and reports issues grouped into four categories: Security, Session Performance, Skills & Hooks, and Configuration.
 
 - **Health score**: a weighted summary (Excellent / Good / Fair / Poor) based on error and warning counts
 - **Severity filters**: click any stat card (Errors, Warnings, Info) to toggle that severity on or off in the results
@@ -174,20 +174,24 @@ The config health view runs 19 lint rules against your Claude Code configuration
 - **Rescan**: re-run all checks without switching tabs
 - **Skill display names**: skills are identified by their directory name (e.g., "animate", "context7") rather than the repeated filename "SKILL.md"
 
-Rules cover CLAUDE.md size and structure, rules YAML frontmatter and glob validation, skill metadata completeness, naming conventions, and cross-cutting token budget estimates.
+Rules cover CLAUDE.md size and structure (CMD), rules YAML frontmatter and glob validation (RUL), skill metadata completeness and naming conventions (SKL), cross-cutting token budget estimates (XCT), and settings validation (CFG).
 
-The health screen also runs **secret detection** (SEC rules) that scans session JSONL files for accidentally leaked credentials. Seven patterns are checked: private keys, AWS access keys, authorization headers, API keys/tokens, password literals, connection strings with credentials, and platform tokens (GitHub, Slack, npm, Stripe, Google). A multi-stage filter pipeline reduces false positives using Shannon entropy analysis, capture-group value extraction, randomness heuristics, and expanded allowlists for placeholders and conversational context. Results load progressively: config and session checks appear instantly while secret scanning runs in the background with an inline progress indicator.
+The health screen also runs **secret detection** (SEC rules) that scans session JSONL files for accidentally leaked credentials. Eight patterns are checked: private keys, AWS access keys, authorization headers, API keys/tokens, password literals, connection strings with credentials, platform tokens (GitHub, Slack, npm, Stripe, Google), and credential exposure when subprocess env scrubbing is disabled. A multi-stage filter pipeline reduces false positives using Shannon entropy analysis, capture-group value extraction, randomness heuristics, and expanded allowlists for placeholders and conversational context. Results load progressively: config and session checks appear instantly while secret scanning runs in the background with an inline progress indicator.
 
 **Real-time secret alerts**: when a session file is updated, Claudoscope scans the tail of the file for secrets and shows a floating alert panel if a match is found. This can be toggled on or off in Settings > Security.
 
-In addition to configuration and secret checks, the health screen runs **session health checks** (SES rules) that analyze actual usage data from the last 30 days. These surface sessions that burned too many tokens, cost too much, or ran too long:
+In addition to configuration and secret checks, the health screen runs **session health checks** (SES rules) that analyze actual usage data from the last 30 days:
 
 - **SES001**: session cost exceeded $25
-- **SES002**: conversation exceeded 200 messages
-- **SES003**: cumulative token consumption exceeded 5M (including cache)
+- **SES002**: conversation triggered frequent context compaction
+- **SES003**: cumulative token consumption exceeded expected spending
 - **SES004**: session idle for 7+ days with 50+ messages
+- **SES005**: session experienced API errors (rate limits, auth failures, proxy errors, tool errors)
+- **SES006**: session resumed after 75+ minutes idle without `/clear` (zombie session)
 
 Each session triggers at most one check (the most severe), and results are capped at 10 to avoid flooding the health score. Session results include token and message count badges, and clicking "View Session" navigates directly to the session in the Sessions rail.
+
+**Settings validation** (CFG rules) checks your `settings.json` for misconfigurations: sandbox enabled without lock files, contradictory filesystem permissions, bare mode conflicting with hooks/MCP, missing subprocess environment scrubbing, and skill shell execution without restriction.
 
 ### Settings
 
@@ -198,7 +202,7 @@ The settings view reads your `~/.claude/settings.json` and presents each configu
 - **Appearance**: switch between System, Light, and Dark themes. The selected theme applies to the dashboard window immediately.
 - **Model**: shows the currently configured default model.
 - **Permissions**: displays permission rules, including denied file patterns for read and edit operations.
-- **Security**: surfaces security-related flags such as YOLO mode status and dangerous permission prompt handling. Includes a toggle to enable or disable real-time secret scanning alerts.
+- **Security**: surfaces security-related flags such as YOLO mode status, dangerous permission prompt handling, weaker sandbox settings, and skill shell execution status. Includes a toggle to enable or disable real-time secret scanning alerts.
 - **Attribution**: attribution and credit configuration.
 - **Plugins**: lists all installed plugins with their source marketplaces, and shows any extra marketplace sources.
 - **Account**: displays account metadata including startup count, last release notes version, onboarding status, and key bindings.
