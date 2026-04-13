@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.0]
+### New Features
+- Claude Code v2.1.90+ support: recognize Monitor, EnterWorktree, ExitWorktree tools with proper icons and exec-category classification
+- PermissionDenied hook event displayed in Hooks rail
+- Git worktree badge: sessions that use worktree tools show a cyan branch icon in the sidebar
+- CFG007 lint rule: flags when skill shell execution is unrestricted (scoped to users with plugins)
+- Pre-release security audit pipeline: scans npm and Swift/SPM dependencies against GHSA and OSV databases, gating releases on HIGH+ CVEs
+- MDM-managed auto-update preference: respects macOS Configuration Profiles, disables toggle with "Managed by your organization" label
+
+### Improvements
+- disableSkillShellExecution status surfaced in Settings > Security
+- Auto-update reworked: async process execution, .bak rollback safety, improved cleanup on failure or cancellation
+- Secret scanning hardened with new patterns, real-time tail scanning fixes, and unit tests
+- Secret alert deduplication and detection UX improvements
+- Download counter validates release asset existence before counting
+- README updated: 45 lint rules, all hook event types, session badges, CFG checks documented
+
+### Bug Fixes
+- Fix wrangler 3.x CVEs by upgrading to 4.81.0
+
 ## [0.5.0]
 ### New Features
 - 9 observability features: turn duration analytics (histogram + percentiles), effort level classification with donut chart and cost breakdown, subagent tree visualization in session detail, error pattern detection with sidebar badges, idle/zombie session detection, config health linter expansion (CFG001-CFG006), parallel tool call badges, SEC008 ENV_SCRUB correlation
