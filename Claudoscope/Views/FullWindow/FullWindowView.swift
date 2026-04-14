@@ -37,7 +37,7 @@ struct FullWindowView: View {
     @State private var selectedSettingsSection: String?
 
     // Sidebar resize
-    @SceneStorage("sidebarWidth") private var sidebarWidth: Double = 240
+    @AppStorage("sidebarWidth") private var sidebarWidth: Double = 240
     @State private var dragStartWidth: CGFloat?
 
     var body: some View {

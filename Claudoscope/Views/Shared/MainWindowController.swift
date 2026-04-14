@@ -9,7 +9,9 @@ final class PersistentWindow: NSWindow {
     }
 }
 
-/// Manages the main NSWindow directly, bypassing SwiftUI's Window scene limitations
+/// Manages the main NSWindow directly, bypassing SwiftUI's Window scene limitations.
+/// Views hosted here are outside SwiftUI's scene lifecycle.
+/// Use @AppStorage or @State, never @SceneStorage.
 final class MainWindowController {
     static let shared = MainWindowController()
 
