@@ -10,14 +10,16 @@ struct AnalyticsEngine {
         from fromDate: Date? = nil,
         to toDate: Date? = nil
     ) -> AnalyticsData {
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        let filtered = sessions.filter { pair in
-            guard let date = isoFormatter.date(from: pair.session.lastTimestamp) else { return true }
-            if let fromDate, date < fromDate { return false }
-            if let toDate, date > toDate { return false }
-            return true
+        let filtered: [(session: SessionSummary, project: Project)]
+        if fromDate == nil && toDate == nil {
+            filtered = sessions
+        } else {
+            filtered = sessions.filter { pair in
+                guard let date = ISO8601.parse(pair.session.lastTimestamp) else { return false }
+                if let fromDate, date < fromDate { return false }
+                if let toDate, date > toDate { return false }
+                return true
+            }
         }
 
         var totalSessions = 0
@@ -386,7 +388,6 @@ struct AnalyticsEngine {
         guard !sessionsWithLatency.isEmpty else { return .empty }
 
         let medians = sessionsWithLatency.compactMap { $0.session.observability.medianTurnDurationMs }.sorted()
-        let count = medians.count
 
         let p50 = percentile(sorted: medians, p: 0.50)
         let p95 = percentile(sorted: medians, p: 0.95)

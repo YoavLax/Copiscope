@@ -130,14 +130,11 @@ final class SessionStore {
 
     /// Today's sessions
     var todaySessions: [SessionSummary] {
-        let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: Date())
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let startOfToday = Calendar.current.startOfDay(for: Date())
         return allSessionsWithProjects
             .map(\.session)
             .filter { session in
-                guard let date = isoFormatter.date(from: session.lastTimestamp) else { return false }
+                guard let date = ISO8601.parse(session.lastTimestamp) else { return false }
                 return date >= startOfToday
             }
     }
@@ -264,7 +261,8 @@ final class SessionStore {
                 self.checkActiveSession()
                 self.recomputeAnalytics()
             } catch {
-                // Ignore parse errors for individual file updates
+                NSLog("[Claudoscope] Watcher: failed to parse session %@ in project %@: %@",
+                      sessionId, projectId, error.localizedDescription)
             }
 
             // Invalidate lint cache so next Config Health visit rescans
@@ -317,11 +315,8 @@ final class SessionStore {
 
     private func checkActiveSession() {
         let now = Date()
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
         hasActiveSession = allSessionsWithProjects.contains { pair in
-            guard let date = isoFormatter.date(from: pair.session.lastTimestamp) else { return false }
+            guard let date = ISO8601.parse(pair.session.lastTimestamp) else { return false }
             return now.timeIntervalSince(date) < 60
         }
     }
@@ -360,17 +355,6 @@ final class SessionStore {
             pricingTable: pricingTable,
             from: from,
             to: to
-        )
-    }
-
-    /// Analytics for the sidebar (always all projects, 30d, for cost ranking)
-    var sidebarAnalyticsData: AnalyticsData {
-        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())
-        return AnalyticsEngine.compute(
-            sessions: allSessionsWithProjects,
-            pricingTable: pricingTable,
-            from: thirtyDaysAgo,
-            to: nil
         )
     }
 
@@ -568,12 +552,16 @@ final class SessionStore {
             for file in subFiles {
                 let subId = String(file.dropLast(6))
                 let url = subagentsDir.appendingPathComponent(file)
-                if let summary = try? await parser.parseMetadata(
-                    url: url,
-                    sessionId: subId,
-                    pricingTable: pricingTable
-                ) {
+                do {
+                    let summary = try await parser.parseMetadata(
+                        url: url,
+                        sessionId: subId,
+                        pricingTable: pricingTable
+                    )
                     subagentSummaries.append(summary)
+                } catch {
+                    NSLog("[Claudoscope] Subagent: failed to parse %@: %@",
+                          url.path, error.localizedDescription)
                 }
             }
 

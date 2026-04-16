@@ -58,8 +58,8 @@ struct SidebarView: View {
                     )
                 case .analytics:
                     AnalyticsSidebarContent(
-                        projectCosts: store.sidebarAnalyticsData.projectCosts,
-                        totalCost: store.sidebarAnalyticsData.totalCost,
+                        projectCosts: store.analyticsData.projectCosts,
+                        totalCost: store.analyticsData.totalCost,
                         filterText: filterText,
                         timeRangeLabel: store.analyticsTimeRange.rawValue,
                         selectedProjectId: Binding(

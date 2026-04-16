@@ -126,13 +126,10 @@ struct MenuBarPopoverContent: View {
 
     private var activeSessions: [SessionSummary] {
         let now = Date()
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
         return store.allSessionsWithProjects
             .map(\.session)
             .filter { session in
-                guard let date = isoFormatter.date(from: session.lastTimestamp) else { return false }
+                guard let date = ISO8601.parse(session.lastTimestamp) else { return false }
                 return now.timeIntervalSince(date) < 60
             }
     }

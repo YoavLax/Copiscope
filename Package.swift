@@ -16,7 +16,7 @@ let package = Package(
                 .product(name: "OrderedCollections", package: "swift-collections"),
             ],
             path: "Claudoscope",
-            exclude: ["Info.plist"],
+            exclude: ["Info.plist", "Claudoscope.entitlements"],
             resources: [
                 .process("Resources"),
             ]

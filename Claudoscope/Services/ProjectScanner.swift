@@ -63,7 +63,8 @@ struct ProjectScanner {
                             )
                             sessions.append(summary)
                         } catch {
-                            // Skip unreadable files
+                            NSLog("[Claudoscope] Scanner: failed to parse %@: %@",
+                                  entry.url.path, error.localizedDescription)
                             continue
                         }
                     }
