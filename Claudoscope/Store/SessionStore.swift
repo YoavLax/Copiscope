@@ -26,7 +26,7 @@ enum AppAppearance: String, CaseIterable {
 
 /// Central observable store for all session/project data.
 /// Owns the file watcher and Combine pipeline for reactive updates.
-@Observable
+@MainActor @Observable
 final class SessionStore {
     var projects: [Project] = []
     var sessionsByProject: [String: [SessionSummary]] = [:]
@@ -193,7 +193,9 @@ final class SessionStore {
             }
             .store(in: &cancellables)
 
-        watcher.start()
+        if !watcher.start() {
+            NSLog("[Claudoscope] File watcher failed to start. File changes will not be detected.")
+        }
     }
 
     private func performInitialScan() {
@@ -205,13 +207,11 @@ final class SessionStore {
             )
             let (scannedProjects, scannedSessions) = await scanner.scan()
 
-            await MainActor.run {
-                self.projects = scannedProjects
-                self.sessionsByProject = scannedSessions
-                self.isLoading = false
-                self.checkActiveSession()
-                self.recomputeAnalytics()
-            }
+            self.projects = scannedProjects
+            self.sessionsByProject = scannedSessions
+            self.isLoading = false
+            self.checkActiveSession()
+            self.recomputeAnalytics()
         }
     }
 
@@ -232,9 +232,6 @@ final class SessionStore {
             // Invalidate cache
             await cache.invalidate(sessionId)
 
-            // Reset UUID dedup so re-parsed records aren't skipped
-            await parser.resetDedup()
-
             // Re-parse metadata
             do {
                 let summary = try await parser.parseMetadata(
@@ -243,37 +240,35 @@ final class SessionStore {
                     pricingTable: pricingTable
                 )
 
-                await MainActor.run {
-                    // Update or insert session
-                    var sessions = self.sessionsByProject[projectId] ?? []
-                    if let idx = sessions.firstIndex(where: { $0.id == sessionId }) {
-                        sessions[idx] = summary
-                    } else {
-                        sessions.insert(summary, at: 0)
-                    }
-                    self.sessionsByProject[projectId] = sessions
-
-                    // Ensure project exists
-                    if !self.projects.contains(where: { $0.id == projectId }) {
-                        let project = Project(
-                            id: projectId,
-                            name: decodeProjectName(projectId),
-                            path: url.deletingLastPathComponent().path,
-                            sessionCount: sessions.count
-                        )
-                        self.projects.append(project)
-                        self.projects.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                    }
-
-                    self.checkActiveSession()
-                    self.recomputeAnalytics()
+                // Update or insert session
+                var sessions = self.sessionsByProject[projectId] ?? []
+                if let idx = sessions.firstIndex(where: { $0.id == sessionId }) {
+                    sessions[idx] = summary
+                } else {
+                    sessions.insert(summary, at: 0)
                 }
+                self.sessionsByProject[projectId] = sessions
+
+                // Ensure project exists
+                if !self.projects.contains(where: { $0.id == projectId }) {
+                    let project = Project(
+                        id: projectId,
+                        name: decodeProjectName(projectId),
+                        path: url.deletingLastPathComponent().path,
+                        sessionCount: sessions.count
+                    )
+                    self.projects.append(project)
+                    self.projects.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                }
+
+                self.checkActiveSession()
+                self.recomputeAnalytics()
             } catch {
                 // Ignore parse errors for individual file updates
             }
 
             // Invalidate lint cache so next Config Health visit rescans
-            await MainActor.run { self.lintResultsValid = false }
+            self.lintResultsValid = false
 
             // Real-time secret scan: check last 50 lines for secrets
             await scanForRealtimeSecrets(url: url, sessionId: sessionId, projectId: projectId)
@@ -281,78 +276,42 @@ final class SessionStore {
         case .configChanged:
             // Config changes handled in later phases
             break
+
+        case .mustRescan:
+            rescanAllSessions()
         }
     }
 
-    private static func readTail(of url: URL, bytes: Int = 131072) -> [String]? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        let fileSize = handle.seekToEndOfFile()
-        let offset = fileSize > UInt64(bytes) ? fileSize - UInt64(bytes) : 0
-        handle.seek(toFileOffset: offset)
-        guard let data = try? handle.readToEnd(),
-              let text = String(data: data, encoding: .utf8) else { return nil }
-        let lines = text.components(separatedBy: "\n")
-        return offset > 0 ? Array(lines.dropFirst().suffix(50)) : Array(lines.suffix(50))
-    }
-
-    private var lastScannedOffset: [URL: UInt64] = [:]
-
-    private func readDelta(of url: URL) -> [String]? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-
-        let fileSize = handle.seekToEndOfFile()
-        let previousOffset = lastScannedOffset[url] ?? 0
-
-        if previousOffset == 0 || previousOffset > fileSize {
-            lastScannedOffset[url] = fileSize
-            return Self.readTail(of: url)
-        }
-
-        guard fileSize > previousOffset else { return nil }
-
-        handle.seek(toFileOffset: previousOffset)
-        guard let data = try? handle.readToEnd(),
-              let text = String(data: data, encoding: .utf8) else { return nil }
-
-        lastScannedOffset[url] = fileSize
-
-        let lines = text.components(separatedBy: "\n")
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        return lines.isEmpty ? nil : lines
-    }
+    private let deltaTracker = DeltaTracker()
 
     private func scanForRealtimeSecrets(url: URL, sessionId: String, projectId: String) async {
         guard realtimeSecretScanEnabled else { return }
-        guard let lines = readDelta(of: url) else { return }
+        guard let lines = deltaTracker.readDelta(of: url) else { return }
 
         let findings = await linterService.scanLinesForSecrets(lines)
         guard !findings.isEmpty else { return }
 
-        await MainActor.run {
-            for finding in findings {
-                let masked = ConfigLinterService.maskSecret(finding.matchedText)
-                guard !alertedSecrets.contains(masked) else { continue }
-                alertedSecrets.insert(masked)
+        for finding in findings {
+            let masked = ConfigLinterService.maskSecret(finding.matchedText)
+            guard !alertedSecrets.contains(masked) else { continue }
+            alertedSecrets.insert(masked)
 
-                let title = sessionsByProject[projectId]?
-                    .first(where: { $0.id == sessionId })?.title ?? sessionId
+            let title = sessionsByProject[projectId]?
+                .first(where: { $0.id == sessionId })?.title ?? sessionId
 
-                let isSubagent = url.pathComponents.contains("subagents")
-                let alert = SecretAlert(
-                    checkId: finding.checkId,
-                    patternName: finding.patternName,
-                    maskedValue: masked,
-                    sessionTitle: title,
-                    projectId: projectId,
-                    sessionId: sessionId,
-                    isSubagent: isSubagent
-                )
-                activeSecretAlert = alert
-                onSecretAlert?(alert)
-                break
-            }
+            let isSubagent = url.pathComponents.contains("subagents")
+            let alert = SecretAlert(
+                checkId: finding.checkId,
+                patternName: finding.patternName,
+                maskedValue: masked,
+                sessionTitle: title,
+                projectId: projectId,
+                sessionId: sessionId,
+                isSubagent: isSubagent
+            )
+            activeSecretAlert = alert
+            onSecretAlert?(alert)
+            break
         }
     }
 
@@ -377,11 +336,9 @@ final class SessionStore {
             )
             let (scannedProjects, scannedSessions) = await scanner.scan()
 
-            await MainActor.run {
-                self.projects = scannedProjects
-                self.sessionsByProject = scannedSessions
-                self.recomputeAnalytics()
-            }
+            self.projects = scannedProjects
+            self.sessionsByProject = scannedSessions
+            self.recomputeAnalytics()
         }
     }
 
@@ -426,9 +383,7 @@ final class SessionStore {
 
         // Check cache first
         if let cached = await cache.get(cacheKey) {
-            await MainActor.run {
-                self.selectedSession = cached
-            }
+            self.selectedSession = cached
             return
         }
 
@@ -470,9 +425,7 @@ final class SessionStore {
                 parsed
             }
             await cache.set(cacheKey, value: session)
-            await MainActor.run {
-                self.selectedSession = session
-            }
+            self.selectedSession = session
         } catch {
             // Handle error
         }
@@ -481,40 +434,32 @@ final class SessionStore {
     // MARK: - Plans
 
     func loadPlans() async {
-        await MainActor.run { plansLoading = true }
+        plansLoading = true
         let loaded = await plansService.loadPlans()
-        await MainActor.run {
-            self.plans = loaded
-            self.plansLoading = false
-        }
+        self.plans = loaded
+        self.plansLoading = false
     }
 
     func loadPlanDetail(filename: String) async {
         let detail = await plansService.loadPlanDetail(filename: filename)
-        await MainActor.run {
-            self.selectedPlanDetail = detail
-        }
+        self.selectedPlanDetail = detail
     }
 
     // MARK: - Timeline
 
     func loadTimeline() async {
-        await MainActor.run { timelineLoading = true }
+        timelineLoading = true
         let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date())
         let loaded = await timelineService.loadEntries(since: sevenDaysAgo)
-        await MainActor.run {
-            self.timelineEntries = loaded
-            self.timelineLoading = false
-        }
+        self.timelineEntries = loaded
+        self.timelineLoading = false
     }
 
     // MARK: - Config (hooks, commands, MCPs, memory)
 
     func loadMemoryFiles(projectId: String?) async {
         let memory = await configService.loadMemoryFiles(projectId: projectId)
-        await MainActor.run {
-            self.memoryFiles = memory
-        }
+        self.memoryFiles = memory
     }
 
     // MARK: - Config Lint
@@ -525,18 +470,14 @@ final class SessionStore {
     }
 
     func runConfigLint(projectId: String?) async {
-        await MainActor.run {
-            lintLoading = true
-            secretScanLoading = false
-        }
+        lintLoading = true
+        secretScanLoading = false
 
-        // Capture sessions on MainActor before any await
-        let sessions: [SessionSummary] = await MainActor.run {
-            if let projectId {
-                return sessionsByProject[projectId] ?? []
-            } else {
-                return sessionsByProject.values.flatMap { $0 }
-            }
+        let sessions: [SessionSummary]
+        if let projectId {
+            sessions = sessionsByProject[projectId] ?? []
+        } else {
+            sessions = sessionsByProject.values.flatMap { $0 }
         }
 
         // Resolve project root from projectId
@@ -556,42 +497,38 @@ final class SessionStore {
         let phase1Results = fastResults
         let phase1Summary = LintSummary.from(results: phase1Results)
 
-        await MainActor.run {
-            self.lintResults = phase1Results
-            self.lintSummary = phase1Summary
-            self.lintLoading = false
-            self.secretScanLoading = true
-        }
+        self.lintResults = phase1Results
+        self.lintSummary = phase1Summary
+        self.lintLoading = false
+        self.secretScanLoading = true
 
         // Phase 2 (slow): secret scanning in background
         let secretResults = await linterService.lintSessionSecrets(sessions, claudeDir: claudeDir)
 
-        await MainActor.run {
-            var allResults = phase1Results
-            allResults.append(contentsOf: secretResults)
+        var allResults = phase1Results
+        allResults.append(contentsOf: secretResults)
 
-            // SEC008: correlate ENV_SCRUB not set with actual secret findings
-            if allResults.contains(where: { $0.checkId == .CFG006 }) && !secretResults.isEmpty {
-                allResults.append(LintResult(
-                    severity: .warning,
-                    checkId: .SEC008,
-                    filePath: "settings.json",
-                    message: "\(secretResults.count) credential pattern(s) found in session data while CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is not set. Credentials may leak via Bash tool, hooks, or MCP servers.",
-                    fix: "Add CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 to settings.json env section to prevent credential leakage into subprocess environments.",
-                    displayPath: "settings.json"
-                ))
-            }
-
-            allResults.sort { $0.severity < $1.severity }
-            self.lintResults = allResults
-            self.lintSummary = LintSummary.from(results: allResults)
-            self.secretScanLoading = false
-            self.lintResultsValid = true
+        // SEC008: correlate ENV_SCRUB not set with actual secret findings
+        if allResults.contains(where: { $0.checkId == .CFG006 }) && !secretResults.isEmpty {
+            allResults.append(LintResult(
+                severity: .warning,
+                checkId: .SEC008,
+                filePath: "settings.json",
+                message: "\(secretResults.count) credential pattern(s) found in session data while CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is not set. Credentials may leak via Bash tool, hooks, or MCP servers.",
+                fix: "Add CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 to settings.json env section to prevent credential leakage into subprocess environments.",
+                displayPath: "settings.json"
+            ))
         }
+
+        allResults.sort { $0.severity < $1.severity }
+        self.lintResults = allResults
+        self.lintSummary = LintSummary.from(results: allResults)
+        self.secretScanLoading = false
+        self.lintResultsValid = true
     }
 
     func loadConfig(projectId: String?) async {
-        await MainActor.run { configLoading = true }
+        configLoading = true
         let hooks = await configService.loadHooks()
         let cmds = await configService.loadCommands()
         let skls = await configService.loadSkills()
@@ -599,15 +536,13 @@ final class SessionStore {
         let mcps = await configService.loadMcpServers(projectPath: projectPath)
         let memory = await configService.loadMemoryFiles(projectId: projectId)
         let extended = await configService.loadExtendedConfig()
-        await MainActor.run {
-            self.hookGroups = hooks
-            self.commands = cmds
-            self.skills = skls
-            self.mcpServers = mcps
-            self.memoryFiles = memory
-            self.extendedConfig = extended
-            self.configLoading = false
-        }
+        self.hookGroups = hooks
+        self.commands = cmds
+        self.skills = skls
+        self.mcpServers = mcps
+        self.memoryFiles = memory
+        self.extendedConfig = extended
+        self.configLoading = false
     }
 
     // MARK: - Subagent Tree
@@ -621,7 +556,7 @@ final class SessionStore {
             .appendingPathComponent("subagents")
 
         guard fm.fileExists(atPath: subagentsDir.path) else {
-            await MainActor.run { self.subagentTree = nil }
+            self.subagentTree = nil
             return
         }
 
@@ -648,12 +583,12 @@ final class SessionStore {
                     parentSession: parentSummary,
                     subagentSummaries: subagentSummaries
                 )
-                await MainActor.run { self.subagentTree = tree }
+                self.subagentTree = tree
             } else {
-                await MainActor.run { self.subagentTree = nil }
+                self.subagentTree = nil
             }
         } catch {
-            await MainActor.run { self.subagentTree = nil }
+            self.subagentTree = nil
         }
     }
 
@@ -667,5 +602,60 @@ final class SessionStore {
             return false
         }
         return files.contains { $0.hasSuffix(".jsonl") }
+    }
+}
+
+// MARK: - DeltaTracker
+
+/// Thread-safe tracker for incremental file reads.
+/// Keeps per-URL offsets so each call returns only new lines since the last read.
+private final class DeltaTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var offsets: [URL: UInt64] = [:]
+
+    func readDelta(of url: URL) -> [String]? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+
+        let fileSize = handle.seekToEndOfFile()
+        let previousOffset = offsets[url] ?? 0
+
+        if previousOffset == 0 || previousOffset > fileSize {
+            // First read or file was truncated: read the tail using the same handle
+            let tailBytes: UInt64 = min(fileSize, 131_072)
+            let tailOffset = fileSize > tailBytes ? fileSize - tailBytes : 0
+            handle.seek(toFileOffset: tailOffset)
+            guard let data = try? handle.readToEnd(),
+                  let text = String(data: data, encoding: .utf8) else {
+                offsets[url] = fileSize
+                return nil
+            }
+            offsets[url] = fileSize
+            let lines = text.components(separatedBy: "\n")
+            return tailOffset > 0 ? Array(lines.dropFirst().suffix(50)) : Array(lines.suffix(50))
+        }
+
+        guard fileSize > previousOffset else { return nil }
+
+        handle.seek(toFileOffset: previousOffset)
+        guard let data = try? handle.readToEnd(),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+
+        offsets[url] = fileSize
+
+        // Prune stale entries to prevent unbounded growth
+        if offsets.count > 200 {
+            let fm = FileManager.default
+            for key in offsets.keys where !fm.fileExists(atPath: key.path) {
+                offsets.removeValue(forKey: key)
+            }
+        }
+
+        let lines = text.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return lines.isEmpty ? nil : lines
     }
 }

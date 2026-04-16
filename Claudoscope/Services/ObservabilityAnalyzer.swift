@@ -159,6 +159,49 @@ struct ObservabilityAnalyzer {
         )
     }
 
+    /// Lightweight overload that accepts raw timestamp strings instead of full records.
+    static func detectIdleGaps(
+        timestamps: [String],
+        thresholdMinutes: Int = idleGapThresholdMinutes
+    ) -> IdleGapResult {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        let formatterNoFrac = ISO8601DateFormatter()
+        formatterNoFrac.formatOptions = [.withInternetDateTime]
+
+        let parsed: [(ts: String, date: Date)] = timestamps.compactMap { ts in
+            guard let date = parseISO8601(ts, formatter: formatter, fallback: formatterNoFrac) else { return nil }
+            return (ts: ts, date: date)
+        }
+
+        guard parsed.count >= 2 else {
+            return IdleGapResult(maxGapSeconds: 0, gapTimestamp: nil, hasZombieGap: false)
+        }
+
+        var maxGap: Double = 0
+        var maxGapTimestamp: String?
+        var maxGapIndex = 0
+
+        for i in 1..<parsed.count {
+            let gap = parsed[i].date.timeIntervalSince(parsed[i - 1].date)
+            if gap > maxGap {
+                maxGap = gap
+                maxGapTimestamp = parsed[i - 1].ts
+                maxGapIndex = i
+            }
+        }
+
+        let thresholdSeconds = Double(thresholdMinutes) * 60
+        let hasZombie = maxGap > thresholdSeconds && maxGapIndex < parsed.count - 1
+
+        return IdleGapResult(
+            maxGapSeconds: maxGap,
+            gapTimestamp: maxGapTimestamp,
+            hasZombieGap: hasZombie
+        )
+    }
+
     // MARK: - Compute Session Observability
 
     static func computeObservability(

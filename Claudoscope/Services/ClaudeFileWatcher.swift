@@ -5,6 +5,7 @@ enum FileChange: Sendable {
     case sessionUpdated(URL)
     case sessionCreated(URL)
     case configChanged(URL)
+    case mustRescan
 }
 
 /// Watches ~/.claude/projects/ for file changes using FSEvents.
@@ -16,6 +17,14 @@ final class ClaudeFileWatcher: @unchecked Sendable {
     private var debounceTimers: [String: DispatchWorkItem] = [:]
     private let queue = DispatchQueue(label: "com.claudoscope.filewatcher")
 
+    /// Weak-reference box passed to FSEvents callback to avoid use-after-free.
+    /// The stored property keeps it alive; the callback checks watcher != nil.
+    private final class StreamBox {
+        weak var watcher: ClaudeFileWatcher?
+        init(_ watcher: ClaudeFileWatcher) { self.watcher = watcher }
+    }
+    private var streamBox: StreamBox?
+
     private static let debounceMS: Int = 300
 
     var changes: AnyPublisher<FileChange, Never> {
@@ -26,11 +35,15 @@ final class ClaudeFileWatcher: @unchecked Sendable {
         self.claudeDir = claudeDir
     }
 
-    func start() {
+    @discardableResult
+    func start() -> Bool {
         let projectsDir = claudeDir.appendingPathComponent("projects").path
 
+        let box = StreamBox(self)
+        self.streamBox = box
+
         var context = FSEventStreamContext()
-        context.info = Unmanaged.passUnretained(self).toOpaque()
+        context.info = Unmanaged.passUnretained(box).toOpaque()
 
         let paths = [projectsDir] as CFArray
         let flags: FSEventStreamCreateFlags =
@@ -42,12 +55,22 @@ final class ClaudeFileWatcher: @unchecked Sendable {
             nil,
             { (_, info, numEvents, eventPaths, eventFlags, _) in
                 guard let info = info else { return }
-                let watcher = Unmanaged<ClaudeFileWatcher>.fromOpaque(info).takeUnretainedValue()
+                let box = Unmanaged<StreamBox>.fromOpaque(info).takeUnretainedValue()
+                guard let watcher = box.watcher else { return }
                 let paths = unsafeBitCast(eventPaths, to: NSArray.self)
 
                 for i in 0..<numEvents {
                     guard let path = paths[i] as? String else { continue }
                     let flags = eventFlags[i]
+
+                    // Handle event overflow: OS dropped events, full rescan needed
+                    let mustRescanFlags = UInt32(kFSEventStreamEventFlagMustScanSubDirs)
+                        | UInt32(kFSEventStreamEventFlagKernelDropped)
+                        | UInt32(kFSEventStreamEventFlagUserDropped)
+                    if flags & mustRescanFlags != 0 {
+                        watcher.subject.send(.mustRescan)
+                        continue
+                    }
 
                     // Skip directory events
                     if flags & UInt32(kFSEventStreamEventFlagItemIsDir) != 0 { continue }
@@ -60,24 +83,33 @@ final class ClaudeFileWatcher: @unchecked Sendable {
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
             0.1, // latency in seconds
             flags
-        ) else { return }
+        ) else {
+            NSLog("[ClaudeFileWatcher] FSEventStreamCreate returned nil for %@", projectsDir)
+            self.streamBox = nil
+            return false
+        }
 
         self.stream = stream
         FSEventStreamSetDispatchQueue(stream, queue)
         FSEventStreamStart(stream)
+        return true
     }
 
     func stop() {
+        streamBox?.watcher = nil
         if let stream {
             FSEventStreamStop(stream)
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
             self.stream = nil
         }
-        for item in debounceTimers.values {
-            item.cancel()
+        streamBox = nil
+        // Clean up timers on the queue where they are created/accessed
+        queue.async { [weak self] in
+            guard let self else { return }
+            for item in self.debounceTimers.values { item.cancel() }
+            self.debounceTimers.removeAll()
         }
-        debounceTimers.removeAll()
     }
 
     private func handleFileEvent(path: String, flags: UInt32) {

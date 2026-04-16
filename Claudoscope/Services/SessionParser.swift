@@ -4,12 +4,6 @@ import Foundation
 /// Port of server/services/session-parser.ts
 actor SessionParser {
     private let decoder = JSONDecoder()
-    private var seenUUIDs = Set<String>()
-
-    /// Clear seen UUIDs (call before a full rescan)
-    func resetDedup() {
-        seenUUIDs.removeAll()
-    }
 
     /// Full parse of a JSONL session file into a ParsedSession
     func parse(url: URL, sessionId: String) throws -> ParsedSession {
@@ -223,7 +217,7 @@ actor SessionParser {
         var hadCompactionSinceLast = false
         var turnsSinceLastCompaction = 0
         var hasWorktreeTool = false
-        var allRecords: [ParsedRecordRaw] = []
+        var recordTimestamps: [String] = []
 
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -409,7 +403,7 @@ actor SessionParser {
                     turnsSinceLastCompaction = 0
                 }
 
-                allRecords.append(raw)
+                if let ts = raw.timestamp { recordTimestamps.append(ts) }
             } catch {
                 continue
             }
@@ -432,7 +426,7 @@ actor SessionParser {
         }.sorted { $0.estimatedCost > $1.estimatedCost }
 
         // Compute idle gap detection
-        let idleGapResult = ObservabilityAnalyzer.detectIdleGaps(records: allRecords)
+        let idleGapResult = ObservabilityAnalyzer.detectIdleGaps(timestamps: recordTimestamps)
 
         // Compute session observability
         let observability = ObservabilityAnalyzer.computeObservability(

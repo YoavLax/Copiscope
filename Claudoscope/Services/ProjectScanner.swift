@@ -9,8 +9,6 @@ struct ProjectScanner {
 
     /// Scan all projects and collect session metadata
     func scan() async -> (projects: [Project], sessionsByProject: [String: [SessionSummary]]) {
-        await parser.resetDedup()
-
         let projectsDir = claudeDir.appendingPathComponent("projects")
         var projects: [Project] = []
         var sessionsByProject: [String: [SessionSummary]] = [:]
