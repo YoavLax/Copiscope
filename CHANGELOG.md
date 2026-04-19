@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.6.1]
+### New Features
+- Hooks rail now merges rules from all five sources (user, project, project-local, plugin, managed) with a SOURCE label per rule. Previously only ~/.claude/settings.json was read, silently hiding hooks shipped by plugins or defined per-project.
+- Hook events beyond the legacy whitelist (SessionEnd, PostToolUseFailure, PreCompact, FileChanged, etc.) now surface automatically.
+
+### Improvements
+- Startup no longer saturates CPU on large session directories: streaming JSONL reader, lightweight metadata-only decode pass, bounded parallel parsing (cap 8), and cooperative cancellation. Scan progress banner during initial load.
+- Config live-reload: edits to ~/.claude/settings.json and the plugin cache now reflect without app restart (debounced 250ms pipeline).
+- Plugin, command, and skill version selection switched from lex sort to mtime, so 1.10.0 correctly beats 1.9.0 and timestamped builds beat "unknown".
+- Multi-day sessions split across UTC days proportionally by elapsed seconds; tier costs computed per-session so the breakdown reconciles with actualCost.
+- Unrecognized models no longer silently priced as Sonnet; analytics skip them via an isUnknown sentinel.
+
+### Bug Fixes
+- Fix EXC_BAD_ACCESS crash from concurrent dictionary mutation in delta reads (added @MainActor isolation, NSLock-protected DeltaTracker).
+- Fix FSEvents callback use-after-free during teardown via a StreamBox weak-reference pattern.
+- Recover from FSEvents overflow (MustScanSubDirs, KernelDropped, UserDropped) instead of silently losing events.
+- Fix sidebar "COST BY PROJECT" stuck on a hardcoded 30-day window while displaying the user-selected time range label.
+- Fix silent parse errors making projects disappear from the UI; failures now log to Console.app.
+- Fix ISO8601 timestamp parsing falling back inconsistently across four call sites.
+- Fix sluggishness from @SceneStorage in views hosted outside the SwiftUI scene lifecycle (replaced with @AppStorage).
+- Fix Custom date pickers being clipped in the TimeRangePicker header.
+- Fix per-session view state leaking between sessions in Tools and Agent Tree panels.
+- Fix update-check tasks orphaning on popover dismissal.
+- Fix cache-tier attribution treating present-but-empty breakdown as authoritative; legacy total now wins, attributed to the 5m tier.
+- Fix tool-result dedup ordering (now first-write-wins).
+- Fix AnyCodable mis-decoding numeric 1/0 as Bool.
+
 ## [0.6.0]
 ### New Features
 - Claude Code v2.1.90+ support: recognize Monitor, EnterWorktree, ExitWorktree tools with proper icons and exec-category classification
