@@ -1,5 +1,19 @@
 import Foundation
 
+// MARK: - Decode Mode
+
+enum DecodeMode: Sendable { case lite, full }
+
+extension CodingUserInfoKey {
+    static let decodeMode = CodingUserInfoKey(rawValue: "decodeMode")!
+}
+
+extension Decoder {
+    var decodeMode: DecodeMode {
+        (userInfo[.decodeMode] as? DecodeMode) ?? .full
+    }
+}
+
 // MARK: - Record Types
 
 enum RecordType: String, Codable, Sendable {
@@ -11,88 +25,6 @@ enum RecordType: String, Codable, Sendable {
     case result
     case fileHistorySnapshot = "file-history-snapshot"
     case progress
-}
-
-// MARK: - Lightweight record for metadata-only scanning
-
-/// Minimal decoder for initial scan — skips message content (thinking blocks,
-/// tool inputs, text) which dominates file size. Only extracts fields needed
-/// for sidebar metadata: type, timestamp, slug, uuid, model, usage, stop_reason.
-struct MetadataOnlyRecord: Decodable, Sendable {
-    let type: RecordType?
-    let uuid: String?
-    let timestamp: String?
-    let slug: String?
-    let sessionId: String?
-    let customTitle: String?
-    let agentName: String?
-    let message: MetadataOnlyMessage?
-    let subtype: String?
-    let content: String?
-    let compactMetadata: CompactMetadataRaw?
-    let toolUseResult: MetadataOnlyToolResult?
-    let isCompactSummary: Bool?
-    let isVisibleInTranscriptOnly: Bool?
-
-    enum CodingKeys: String, CodingKey {
-        case type, uuid, timestamp, slug, sessionId, customTitle, agentName
-        case message, subtype, content, compactMetadata
-        case toolUseResult, isCompactSummary, isVisibleInTranscriptOnly
-    }
-}
-
-/// Minimal message decoder — skips content blocks entirely.
-struct MetadataOnlyMessage: Decodable, Sendable {
-    let role: String?
-    let model: String?
-    let stopReason: String?
-    let usage: TokenUsageRaw?
-    let content: MetadataOnlyContent?
-
-    enum CodingKeys: String, CodingKey {
-        case role, model, content, usage
-        case stopReason = "stop_reason"
-    }
-}
-
-/// Only extracts enough content to count tool_use blocks. Skips text/thinking.
-enum MetadataOnlyContent: Decodable, Sendable {
-    case string(String)
-    case blocks([MetadataOnlyBlock])
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let str = try? container.decode(String.self) {
-            self = .string(str)
-        } else if let blocks = try? container.decode([MetadataOnlyBlock].self) {
-            self = .blocks(blocks)
-        } else {
-            self = .string("")
-        }
-    }
-}
-
-/// Minimal block — decodes type, name, plus thinking/text content needed
-/// for effort classification and error details. Skips heavy tool input payloads.
-struct MetadataOnlyBlock: Decodable, Sendable {
-    let type: String?
-    let name: String?
-    let thinking: String?
-    let text: String?
-
-    enum CodingKeys: String, CodingKey {
-        case type, name, thinking, text
-    }
-}
-
-struct MetadataOnlyToolResult: Decodable, Sendable {
-    let isError: Bool?
-    let content: String?
-
-    enum CodingKeys: String, CodingKey {
-        case isError = "is_error"
-        case content
-    }
 }
 
 // MARK: - Raw JSONL Record (lenient Decodable)
@@ -138,29 +70,36 @@ struct ParsedRecordRaw: Decodable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let mode = decoder.decodeMode
         let decodedType = try? container.decode(RecordType.self, forKey: .type)
         type = decodedType
-        if decodedType == nil {
+        if mode == .full, decodedType == nil {
             unknownTypeRaw = try? container.decode(String.self, forKey: .type)
         } else {
             unknownTypeRaw = nil
         }
         uuid = try container.decodeIfPresent(String.self, forKey: .uuid)
-        parentUuid = try container.decodeIfPresent(String.self, forKey: .parentUuid)
         timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
         sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
-        cwd = try container.decodeIfPresent(String.self, forKey: .cwd)
         slug = try container.decodeIfPresent(String.self, forKey: .slug)
         message = try container.decodeIfPresent(MessageRaw.self, forKey: .message)
         subtype = try container.decodeIfPresent(String.self, forKey: .subtype)
         content = try container.decodeIfPresent(String.self, forKey: .content)
         compactMetadata = try container.decodeIfPresent(CompactMetadataRaw.self, forKey: .compactMetadata)
-        logicalParentUuid = try container.decodeIfPresent(String.self, forKey: .logicalParentUuid)
         toolUseResult = try container.decodeIfPresent(ToolUseResultRaw.self, forKey: .toolUseResult)
         isCompactSummary = try container.decodeIfPresent(Bool.self, forKey: .isCompactSummary)
         isVisibleInTranscriptOnly = try container.decodeIfPresent(Bool.self, forKey: .isVisibleInTranscriptOnly)
         customTitle = try container.decodeIfPresent(String.self, forKey: .customTitle)
         agentName = try container.decodeIfPresent(String.self, forKey: .agentName)
+        if mode == .full {
+            parentUuid = try container.decodeIfPresent(String.self, forKey: .parentUuid)
+            cwd = try container.decodeIfPresent(String.self, forKey: .cwd)
+            logicalParentUuid = try container.decodeIfPresent(String.self, forKey: .logicalParentUuid)
+        } else {
+            parentUuid = nil
+            cwd = nil
+            logicalParentUuid = nil
+        }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -185,6 +124,18 @@ struct MessageRaw: Decodable, Sendable {
         case role, content, id, model
         case stopReason = "stop_reason"
         case usage
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = try container.decodeIfPresent(String.self, forKey: .role)
+        content = try container.decodeIfPresent(MessageContentRaw.self, forKey: .content)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        stopReason = try container.decodeIfPresent(String.self, forKey: .stopReason)
+        usage = try container.decodeIfPresent(TokenUsageRaw.self, forKey: .usage)
+        id = decoder.decodeMode == .full
+            ? try container.decodeIfPresent(String.self, forKey: .id)
+            : nil
     }
 }
 
@@ -237,6 +188,27 @@ struct ContentBlockRaw: Decodable, Sendable {
         case toolUseId = "tool_use_id"
         case content
         case isError = "is_error"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        if decoder.decodeMode == .full {
+            id = try container.decodeIfPresent(String.self, forKey: .id)
+            input = try container.decodeIfPresent([String: AnyCodableValue].self, forKey: .input)
+            toolUseId = try container.decodeIfPresent(String.self, forKey: .toolUseId)
+            content = try container.decodeIfPresent(ToolResultContentRaw.self, forKey: .content)
+            isError = try container.decodeIfPresent(Bool.self, forKey: .isError)
+        } else {
+            id = nil
+            input = nil
+            toolUseId = nil
+            content = nil
+            isError = nil
+        }
     }
 }
 

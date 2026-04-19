@@ -34,8 +34,8 @@ cleanup-v999999.sh
 # claude
 .claude/
 
-# Tests (contains fake tokens that trigger GitHub push protection)
-ClaudoscopeTests/
+# Tests file with fake tokens that trigger GitHub push protection
+ClaudoscopeTests/SecretDetectionTests.swift
 
 # Security allowlist
 .security-allowlist.json

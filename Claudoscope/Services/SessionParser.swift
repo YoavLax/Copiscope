@@ -3,7 +3,16 @@ import Foundation
 /// Stream-parses Claude Code JSONL session files.
 /// Port of server/services/session-parser.ts
 actor SessionParser {
-    private let decoder = JSONDecoder()
+    private let liteDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.userInfo[.decodeMode] = DecodeMode.lite
+        return d
+    }()
+    private let fullDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.userInfo[.decodeMode] = DecodeMode.full
+        return d
+    }()
 
     /// Full parse of a JSONL session file into a ParsedSession
     func parse(url: URL, sessionId: String) throws -> ParsedSession {
@@ -39,7 +48,7 @@ actor SessionParser {
 
             let record: ParsedRecordRaw
             do {
-                record = try decoder.decode(ParsedRecordRaw.self, from: lineData)
+                record = try fullDecoder.decode(ParsedRecordRaw.self, from: lineData)
             } catch {
                 continue // Skip malformed lines
             }
@@ -174,19 +183,6 @@ actor SessionParser {
         )
     }
 
-    /// Extract the concatenated text content from a lightweight content value.
-    /// Used to surface real error messages to the error classifier and sidebar.
-    private func extractText(from content: MetadataOnlyContent?) -> String {
-        switch content {
-        case .string(let s):
-            return s
-        case .blocks(let blocks):
-            return blocks.compactMap { $0.text }.joined(separator: " ")
-        case .none:
-            return ""
-        }
-    }
-
     /// Quick metadata extraction for sidebar listing
     func parseMetadata(url: URL, sessionId: String, pricingTable: [String: ModelPricing]) throws -> SessionSummary {
         // Stream-parse line by line to avoid loading entire file into memory.
@@ -259,7 +255,7 @@ actor SessionParser {
             guard let lineData = trimmed.data(using: .utf8) else { continue }
 
             do {
-                let raw = try decoder.decode(MetadataOnlyRecord.self, from: lineData)
+                let raw = try liteDecoder.decode(ParsedRecordRaw.self, from: lineData)
 
                 if raw.isCompactSummary == true || raw.type == .progress || raw.isVisibleInTranscriptOnly == true {
                     continue
@@ -411,7 +407,7 @@ actor SessionParser {
 
                 if raw.type == .result, raw.message?.stopReason == "error" {
                     hasError = true
-                    let messageText = extractText(from: raw.message?.content)
+                    let messageText = raw.message?.content?.textContent ?? ""
                     let contentText = messageText.isEmpty ? (raw.content ?? "") : messageText
                     let classification = ObservabilityAnalyzer.classifyError(
                         contentText: contentText,
@@ -523,7 +519,7 @@ actor SessionParser {
         if let slug { return slug }
 
         if let data = firstLine.data(using: .utf8),
-           let raw = try? decoder.decode(ParsedRecordRaw.self, from: data),
+           let raw = try? fullDecoder.decode(ParsedRecordRaw.self, from: data),
            raw.type == .user,
            let content = raw.message?.content {
 
