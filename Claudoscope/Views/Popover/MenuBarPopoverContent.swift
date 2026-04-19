@@ -216,18 +216,24 @@ struct UpdateMenuButton: View {
     @Environment(\.openWindow) private var openWindow
     @Binding var showUpToDate: Bool
     @State private var isHovered = false
+    @State private var checkTask: Task<Void, Never>?
 
     var body: some View {
         Button {
-            Task {
+            checkTask?.cancel()
+            checkTask = Task {
                 showUpToDate = false
                 updateService.clearSkippedVersion()
                 await updateService.checkForUpdates()
+                if Task.isCancelled { return }
                 if updateService.updateAvailable != nil, updateService.error == nil {
                     openWindow(id: "update-available")
                 } else if updateService.updateAvailable == nil, updateService.error == nil {
                     showUpToDate = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    do {
+                        try await Task.sleep(nanoseconds: 3_000_000_000)
+                        showUpToDate = false
+                    } catch {
                         showUpToDate = false
                     }
                 }
@@ -267,5 +273,10 @@ struct UpdateMenuButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
+        .onAppear { showUpToDate = false }
+        .onDisappear {
+            checkTask?.cancel()
+            checkTask = nil
+        }
     }
 }

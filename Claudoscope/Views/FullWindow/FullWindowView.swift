@@ -65,8 +65,8 @@ struct FullWindowView: View {
             // Fire-and-forget data loading (don't block the UI)
             loadDataForRail(newRail)
         }
-        .onChange(of: selectedSessionId) { _, newId in
-            if let sessionId = newId, let projectId = selectedProjectId {
+        .onChange(of: SessionSelection(projectId: selectedProjectId, sessionId: selectedSessionId)) { _, selection in
+            if let sessionId = selection.sessionId, let projectId = selection.projectId {
                 let subagent = pendingSubagentFileName
                 pendingSubagentFileName = nil
                 Task {
@@ -159,7 +159,7 @@ struct FullWindowView: View {
     }
 
     private func loadDataForRail(_ rail: RailItem) {
-        Task.detached {
+        Task {
             switch rail {
             case .plans:
                 await store.loadPlans()
@@ -177,6 +177,11 @@ struct FullWindowView: View {
             }
         }
     }
+}
+
+private struct SessionSelection: Equatable {
+    let projectId: String?
+    let sessionId: String?
 }
 
 // MARK: - Sidebar Resize Handle

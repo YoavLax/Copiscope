@@ -18,6 +18,11 @@ struct ModelPricing: Sendable {
     let cacheRead: Double
     let cacheCreation5m: Double
     let cacheCreation1h: Double
+    var isUnknown: Bool = false
+
+    static let unknown = ModelPricing(
+        input: 0, output: 0, cacheRead: 0, cacheCreation5m: 0, cacheCreation1h: 0, isUnknown: true
+    )
 }
 
 struct PricingTables {
@@ -85,7 +90,7 @@ func getModelFamily(_ model: String?) -> String {
 
 func getModelPricing(_ model: String?, table: [String: ModelPricing]) -> ModelPricing {
     let family = getModelFamily(model)
-    return table[family] ?? table["sonnet"] ?? ModelPricing(input: 3, output: 15, cacheRead: 0.30, cacheCreation5m: 3.75, cacheCreation1h: 6)
+    return table[family] ?? .unknown
 }
 
 func estimateCostFromTokens(

@@ -70,29 +70,32 @@ final class SessionStore {
     // Real-time secret alert
     var activeSecretAlert: SecretAlert?
     var onSecretAlert: ((SecretAlert) -> Void)?
-    private var alertedSecrets: Set<String> = [] {
+    private var alertedSecrets: [String] = [] {
         didSet { Self.persistAlertedSecrets(alertedSecrets) }
     }
 
     private static let alertedSecretsKey = "alertedSecretValues"
+    private static let alertedSecretsCap = 200
 
-    private static func loadAlertedSecrets() -> Set<String> {
+    private static func loadAlertedSecrets() -> [String] {
         let array = UserDefaults.standard.stringArray(forKey: alertedSecretsKey) ?? []
-        return Set(array)
+        return Array(array.suffix(alertedSecretsCap))
     }
 
-    private static func persistAlertedSecrets(_ secrets: Set<String>) {
-        UserDefaults.standard.set(Array(secrets), forKey: alertedSecretsKey)
+    private static func persistAlertedSecrets(_ secrets: [String]) {
+        UserDefaults.standard.set(secrets, forKey: alertedSecretsKey)
     }
 
     // Lint caching
     private var lintResultsValid: Bool = false
 
-    // Real-time secret scanning toggle
-    var realtimeSecretScanEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: "realtimeSecretScanEnabled") }
-        set { UserDefaults.standard.set(newValue, forKey: "realtimeSecretScanEnabled") }
+    var realtimeSecretScanEnabled: Bool = true {
+        didSet {
+            UserDefaults.standard.set(realtimeSecretScanEnabled, forKey: Self.realtimeSecretScanKey)
+        }
     }
+
+    private static let realtimeSecretScanKey = "realtimeSecretScanEnabled"
 
     // Appearance
     var appearance: AppAppearance = .system
@@ -171,8 +174,12 @@ final class SessionStore {
         self.configService = ConfigService(claudeDir: claudeDir)
         self.alertedSecrets = Self.loadAlertedSecrets()
 
-        if UserDefaults.standard.object(forKey: "realtimeSecretScanEnabled") == nil {
-            UserDefaults.standard.set(true, forKey: "realtimeSecretScanEnabled")
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: Self.realtimeSecretScanKey) == nil {
+            self.realtimeSecretScanEnabled = true
+            defaults.set(true, forKey: Self.realtimeSecretScanKey)
+        } else {
+            self.realtimeSecretScanEnabled = defaults.bool(forKey: Self.realtimeSecretScanKey)
         }
 
         setupWatcher()
@@ -229,7 +236,6 @@ final class SessionStore {
             // Invalidate cache
             await cache.invalidate(sessionId)
 
-            // Re-parse metadata
             do {
                 let summary = try await parser.parseMetadata(
                     url: url,
@@ -237,7 +243,8 @@ final class SessionStore {
                     pricingTable: pricingTable
                 )
 
-                // Update or insert session
+                // Re-read after the await so concurrent handlers (or a rescan)
+                // that completed during the suspension don't get clobbered.
                 var sessions = self.sessionsByProject[projectId] ?? []
                 if let idx = sessions.firstIndex(where: { $0.id == sessionId }) {
                     sessions[idx] = summary
@@ -246,7 +253,6 @@ final class SessionStore {
                 }
                 self.sessionsByProject[projectId] = sessions
 
-                // Ensure project exists
                 if !self.projects.contains(where: { $0.id == projectId }) {
                     let project = Project(
                         id: projectId,
@@ -289,15 +295,18 @@ final class SessionStore {
         let findings = await linterService.scanLinesForSecrets(lines)
         guard !findings.isEmpty else { return }
 
+        let title = sessionsByProject[projectId]?
+            .first(where: { $0.id == sessionId })?.title ?? sessionId
+        let isSubagent = url.pathComponents.contains("subagents")
+
         for finding in findings {
             let masked = ConfigLinterService.maskSecret(finding.matchedText)
             guard !alertedSecrets.contains(masked) else { continue }
-            alertedSecrets.insert(masked)
+            alertedSecrets.append(masked)
+            if alertedSecrets.count > Self.alertedSecretsCap {
+                alertedSecrets.removeFirst(alertedSecrets.count - Self.alertedSecretsCap)
+            }
 
-            let title = sessionsByProject[projectId]?
-                .first(where: { $0.id == sessionId })?.title ?? sessionId
-
-            let isSubagent = url.pathComponents.contains("subagents")
             let alert = SecretAlert(
                 checkId: finding.checkId,
                 patternName: finding.patternName,
@@ -309,7 +318,6 @@ final class SessionStore {
             )
             activeSecretAlert = alert
             onSecretAlert?(alert)
-            break
         }
     }
 
@@ -612,16 +620,15 @@ private final class DeltaTracker: @unchecked Sendable {
         let previousOffset = offsets[url] ?? 0
 
         if previousOffset == 0 || previousOffset > fileSize {
-            // First read or file was truncated: read the tail using the same handle
             let tailBytes: UInt64 = min(fileSize, 131_072)
             let tailOffset = fileSize > tailBytes ? fileSize - tailBytes : 0
             handle.seek(toFileOffset: tailOffset)
             guard let data = try? handle.readToEnd(),
                   let text = String(data: data, encoding: .utf8) else {
-                offsets[url] = fileSize
+                offsets[url] = tailOffset
                 return nil
             }
-            offsets[url] = fileSize
+            offsets[url] = tailOffset + UInt64(data.count)
             let lines = text.components(separatedBy: "\n")
             return tailOffset > 0 ? Array(lines.dropFirst().suffix(50)) : Array(lines.suffix(50))
         }
@@ -632,9 +639,10 @@ private final class DeltaTracker: @unchecked Sendable {
         guard let data = try? handle.readToEnd(),
               let text = String(data: data, encoding: .utf8) else { return nil }
 
-        offsets[url] = fileSize
+        // Resume from where this read actually ended, not from the pre-read
+        // EOF snapshot, so any bytes appended during readToEnd() aren't skipped.
+        offsets[url] = previousOffset + UInt64(data.count)
 
-        // Prune stale entries to prevent unbounded growth
         if offsets.count > 200 {
             let fm = FileManager.default
             for key in offsets.keys where !fm.fileExists(atPath: key.path) {

@@ -13,14 +13,17 @@ enum AnyCodableValue: Codable, Hashable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
+        // Order matters: JSONDecoder bridges JSON numbers through NSNumber, so a JSON `1`
+        // also satisfies decode(Bool.self). Trying Int first lets a real JSON `true`/`false`
+        // token (which fails Int decoding) fall through to the Bool branch.
         if container.decodeNil() {
             self = .null
-        } else if let value = try? container.decode(Bool.self) {
-            self = .bool(value)
         } else if let value = try? container.decode(Int.self) {
             self = .int(value)
         } else if let value = try? container.decode(Double.self) {
             self = .double(value)
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
         } else if let value = try? container.decode(String.self) {
             self = .string(value)
         } else if let value = try? container.decode([AnyCodableValue].self) {

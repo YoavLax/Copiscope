@@ -67,7 +67,13 @@ extension ConfigService {
         if let sandboxDict = settings["sandbox"] as? [String: Any] {
             let cmds = sandboxDict["unsandboxedCommands"] as? [String] ?? []
             let weaker = sandboxDict["enableWeakerNestedSandbox"] as? Bool ?? false
-            sandbox = SandboxConfig(unsandboxedCommands: cmds, enableWeakerNestedSandbox: weaker)
+            let network = sandboxDict["network"] as? [String: Any]
+            let denied = network?["deniedDomains"] as? [String] ?? []
+            sandbox = SandboxConfig(
+                unsandboxedCommands: cmds,
+                enableWeakerNestedSandbox: weaker,
+                deniedDomains: denied
+            )
         } else {
             sandbox = nil
         }

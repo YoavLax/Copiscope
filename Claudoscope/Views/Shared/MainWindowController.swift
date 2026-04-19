@@ -36,9 +36,10 @@ final class PersistentWindow: NSWindow {
             return
         }
 
+        precondition(self.updateService != nil, "MainWindowController.open requires setUpdateService first")
         let contentView = FullWindowView()
             .environment(store)
-            .environment(self.updateService ?? UpdateService())
+            .environment(self.updateService!)
             .frame(minWidth: 900, minHeight: 600)
 
         let hostingView = NSHostingView(rootView: contentView)

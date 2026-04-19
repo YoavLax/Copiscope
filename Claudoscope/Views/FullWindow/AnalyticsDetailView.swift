@@ -136,29 +136,31 @@ struct TimeRangePicker: View {
 
     var body: some View {
         @Bindable var store = store
-        Picker("", selection: $store.analyticsTimeRange) {
-            ForEach(AnalyticsTimeRange.allCases, id: \.self) { range in
-                Text(range.rawValue).tag(range)
+        VStack(alignment: .trailing, spacing: 6) {
+            Picker("", selection: $store.analyticsTimeRange) {
+                ForEach(AnalyticsTimeRange.allCases, id: \.self) { range in
+                    Text(range.rawValue).tag(range)
+                }
             }
-        }
-        .pickerStyle(.segmented)
-        .frame(width: 280)
-        .onChange(of: store.analyticsTimeRange) { _, _ in store.recomputeAnalytics() }
+            .pickerStyle(.segmented)
+            .frame(width: 280)
+            .onChange(of: store.analyticsTimeRange) { _, _ in store.recomputeAnalytics() }
 
-        if store.analyticsTimeRange == .custom {
-            HStack(spacing: 4) {
-                DatePicker("", selection: $store.analyticsCustomFrom, displayedComponents: .date)
-                    .labelsHidden()
-                    .datePickerStyle(.field)
-                Text("to")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                DatePicker("", selection: $store.analyticsCustomTo, displayedComponents: .date)
-                    .labelsHidden()
-                    .datePickerStyle(.field)
+            if store.analyticsTimeRange == .custom {
+                HStack(spacing: 4) {
+                    DatePicker("", selection: $store.analyticsCustomFrom, displayedComponents: .date)
+                        .labelsHidden()
+                        .datePickerStyle(.field)
+                    Text("to")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    DatePicker("", selection: $store.analyticsCustomTo, displayedComponents: .date)
+                        .labelsHidden()
+                        .datePickerStyle(.field)
+                }
+                .onChange(of: store.analyticsCustomFrom) { _, _ in store.recomputeAnalytics() }
+                .onChange(of: store.analyticsCustomTo) { _, _ in store.recomputeAnalytics() }
             }
-            .onChange(of: store.analyticsCustomFrom) { _, _ in store.recomputeAnalytics() }
-            .onChange(of: store.analyticsCustomTo) { _, _ in store.recomputeAnalytics() }
         }
     }
 }

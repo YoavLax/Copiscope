@@ -64,8 +64,10 @@ actor SessionParser {
             if record.type == .progress { continue }
             if record.isVisibleInTranscriptOnly == true { continue }
 
-            // Capture slug
-            if slug == nil, let s = record.slug {
+            // Capture slug — keep the latest non-empty one. Claude Code rewrites the
+            // random initial slug to a meaningful one as work progresses (or when the
+            // user runs /rename), so the last record wins.
+            if let s = record.slug, !s.isEmpty {
                 slug = s
             }
 
@@ -101,8 +103,10 @@ actor SessionParser {
                 compactionCount += 1
             }
 
-            // Build tool result map from top-level tool_result records
-            if record.type == .toolResult, let toolUseId = record.toolUseResult?.toolUseId {
+            // Build tool result map from top-level tool_result records.
+            // First-write-wins: top-level and embedded forms can disagree on isError/content shape.
+            if record.type == .toolResult, let toolUseId = record.toolUseResult?.toolUseId,
+               toolResultMap[toolUseId] == nil {
                 toolResultMap[toolUseId] = ToolResultEntry(
                     content: record.toolUseResult?.content ?? "",
                     isError: record.toolUseResult?.isError ?? false,
@@ -113,7 +117,8 @@ actor SessionParser {
             // Extract tool_result blocks embedded in user message content arrays
             if record.type == .user, case .blocks(let blocks) = record.message?.content {
                 for block in blocks {
-                    if block.type == "tool_result", let toolUseId = block.toolUseId {
+                    if block.type == "tool_result", let toolUseId = block.toolUseId,
+                       toolResultMap[toolUseId] == nil {
                         let resultText: String
                         if let content = block.content {
                             resultText = content.textContent
@@ -193,6 +198,9 @@ actor SessionParser {
         var modelOutputTokens: [String: Int] = [:]
         var hasError = false
         var slug: String?
+        var customTitle: String?
+        var isFirstRecord = true
+        var parentSessionId: String? = nil
         var firstTimestamp = ""
         var lastTimestamp = ""
         var firstLine = ""
@@ -249,8 +257,22 @@ actor SessionParser {
                     lastTimestamp = ts
                 }
 
-                if slug == nil, let s = raw.slug {
+                if isFirstRecord {
+                    isFirstRecord = false
+                    if let recSessionId = raw.sessionId, recSessionId != sessionId {
+                        parentSessionId = recSessionId
+                    }
+                }
+                if let parentId = parentSessionId, raw.sessionId == parentId {
+                    continue
+                }
+                if let s = raw.slug, !s.isEmpty {
                     slug = s
+                }
+                // /rename writes type:"custom-title" / "agent-name" records that carry
+                // these fields; either one is the user's chosen display name. Last wins.
+                if let t = raw.customTitle ?? raw.agentName, !t.isEmpty {
+                    customTitle = t
                 }
 
                 // Track user timestamps for turn duration computation
@@ -282,9 +304,22 @@ actor SessionParser {
                         let msgCacheRead = usage.cacheReadInputTokens ?? 0
                         let msgCacheCreate = usage.cacheCreationInputTokens ?? 0
 
-                        // Split cache creation into 5m/1h tiers if available
-                        let msgCache5m = usage.cacheCreation?.ephemeral5mInputTokens ?? msgCacheCreate
-                        let msgCache1h = usage.cacheCreation?.ephemeral1hInputTokens ?? 0
+                        // The breakdown object is often present but with no sub-fields
+                        // populated; in that case the legacy total is authoritative and
+                        // attributed to the default 5m tier. Only when the breakdown has
+                        // at least one explicit sub-field do we trust it over the total
+                        // (this is the case the audit's "double-count" warned about).
+                        let breakdown5m = usage.cacheCreation?.ephemeral5mInputTokens
+                        let breakdown1h = usage.cacheCreation?.ephemeral1hInputTokens
+                        let msgCache5m: Int
+                        let msgCache1h: Int
+                        if breakdown5m != nil || breakdown1h != nil {
+                            msgCache5m = breakdown5m ?? 0
+                            msgCache1h = breakdown1h ?? 0
+                        } else {
+                            msgCache5m = msgCacheCreate
+                            msgCache1h = 0
+                        }
 
                         totalInputTokens += msgInput
                         totalOutputTokens += msgOutput
@@ -409,7 +444,7 @@ actor SessionParser {
             }
         }
 
-        let title = deriveTitle(slug: slug, firstLine: firstLine, sessionId: sessionId)
+        let title = deriveTitle(customTitle: customTitle, slug: slug, firstLine: firstLine, sessionId: sessionId)
         let primaryModel = modelOutputTokens.max(by: { $0.value < $1.value })?.key
 
         // Build model breakdown
@@ -471,7 +506,10 @@ actor SessionParser {
         return "unknown"
     }
 
-    private func deriveTitle(slug: String?, firstLine: String, sessionId: String) -> String {
+    private func deriveTitle(customTitle: String?, slug: String?, firstLine: String, sessionId: String) -> String {
+        // /rename (writes a custom-title record) takes precedence over the slug,
+        // since the slug field is never updated when the user renames a session.
+        if let customTitle { return customTitle }
         if let slug { return slug }
 
         if let data = firstLine.data(using: .utf8),

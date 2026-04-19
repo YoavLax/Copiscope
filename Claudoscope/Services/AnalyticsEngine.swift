@@ -42,33 +42,54 @@ struct AnalyticsEngine {
             let cost = session.estimatedCost
             totalCost += cost
 
-            // Daily usage
-            let day = dateKey(session.firstTimestamp)
-            if let day {
-                if var existing = dailyMap[day] {
-                    existing.inputTokens += session.totalInputTokens
-                    existing.outputTokens += session.totalOutputTokens
-                    existing.cacheReadTokens += session.totalCacheReadTokens
-                    existing.cacheCreationTokens += session.totalCacheCreationTokens
-                    existing.cacheCreation5mTokens += session.totalCacheCreation5mTokens
-                    existing.cacheCreation1hTokens += session.totalCacheCreation1hTokens
-                    existing.sessionCount += 1
-                    existing.messageCount += session.messageCount
-                    existing.estimatedCost += cost
-                    dailyMap[day] = existing
-                } else {
-                    dailyMap[day] = DailyUsage(
-                        date: day,
-                        inputTokens: session.totalInputTokens,
-                        outputTokens: session.totalOutputTokens,
-                        cacheReadTokens: session.totalCacheReadTokens,
-                        cacheCreationTokens: session.totalCacheCreationTokens,
-                        cacheCreation5mTokens: session.totalCacheCreation5mTokens,
-                        cacheCreation1hTokens: session.totalCacheCreation1hTokens,
-                        sessionCount: 1,
-                        messageCount: session.messageCount,
-                        estimatedCost: cost
-                    )
+            // Daily usage: SessionSummary doesn't carry per-message timestamps, so for
+            // sessions that cross midnight we approximate by splitting totals proportionally
+            // by elapsed wall-clock time on each calendar day. Single-day sessions go
+            // entirely to that day. sessionCount is attributed to the first day only so
+            // the per-day session counts still sum to totalSessions.
+            let firstDay = dateKey(session.firstTimestamp)
+            if let firstDay {
+                let splits = daySplits(
+                    firstTimestamp: session.firstTimestamp,
+                    lastTimestamp: session.lastTimestamp,
+                    fallbackDay: firstDay
+                )
+                for (i, slice) in splits.enumerated() {
+                    let isFirst = (i == 0)
+                    let weight = slice.weight
+                    let inputTokens = Int((Double(session.totalInputTokens) * weight).rounded())
+                    let outputTokens = Int((Double(session.totalOutputTokens) * weight).rounded())
+                    let cacheReadTokens = Int((Double(session.totalCacheReadTokens) * weight).rounded())
+                    let cacheCreationTokens = Int((Double(session.totalCacheCreationTokens) * weight).rounded())
+                    let cacheCreation5mTokens = Int((Double(session.totalCacheCreation5mTokens) * weight).rounded())
+                    let cacheCreation1hTokens = Int((Double(session.totalCacheCreation1hTokens) * weight).rounded())
+                    let messageCount = Int((Double(session.messageCount) * weight).rounded())
+                    let sliceCost = cost * weight
+                    if var existing = dailyMap[slice.day] {
+                        existing.inputTokens += inputTokens
+                        existing.outputTokens += outputTokens
+                        existing.cacheReadTokens += cacheReadTokens
+                        existing.cacheCreationTokens += cacheCreationTokens
+                        existing.cacheCreation5mTokens += cacheCreation5mTokens
+                        existing.cacheCreation1hTokens += cacheCreation1hTokens
+                        if isFirst { existing.sessionCount += 1 }
+                        existing.messageCount += messageCount
+                        existing.estimatedCost += sliceCost
+                        dailyMap[slice.day] = existing
+                    } else {
+                        dailyMap[slice.day] = DailyUsage(
+                            date: slice.day,
+                            inputTokens: inputTokens,
+                            outputTokens: outputTokens,
+                            cacheReadTokens: cacheReadTokens,
+                            cacheCreationTokens: cacheCreationTokens,
+                            cacheCreation5mTokens: cacheCreation5mTokens,
+                            cacheCreation1hTokens: cacheCreation1hTokens,
+                            sessionCount: isFirst ? 1 : 0,
+                            messageCount: messageCount,
+                            estimatedCost: sliceCost
+                        )
+                    }
                 }
             }
 
@@ -163,6 +184,8 @@ struct AnalyticsEngine {
         var totalCache1h = 0
         var actualCost = 0.0
         var hypotheticalUncachedCost = 0.0
+        var tierCost5m = 0.0
+        var tierCost1h = 0.0
 
         for session in sessions {
             totalCacheRead += session.totalCacheReadTokens
@@ -171,11 +194,18 @@ struct AnalyticsEngine {
             totalCache1h += session.totalCacheCreation1hTokens
             actualCost += session.estimatedCost
 
-            // Hypothetical: if all cache reads were billed at base input price instead
             let pricing = getModelPricing(session.primaryModel, table: pricingTable)
+            // Hypothetical: if all cache reads were billed at base input price instead
             let cacheReadSavingsPerToken = pricing.input - pricing.cacheRead
             let savings = Double(session.totalCacheReadTokens) / 1e6 * cacheReadSavingsPerToken
             hypotheticalUncachedCost += session.estimatedCost + savings
+
+            // Per-session tier cost reconciles with actualCost; unknown-priced sessions
+            // contribute zero on both sides.
+            if !pricing.isUnknown {
+                tierCost5m += Double(session.totalCacheCreation5mTokens) / 1e6 * pricing.cacheCreation5m
+                tierCost1h += Double(session.totalCacheCreation1hTokens) / 1e6 * pricing.cacheCreation1h
+            }
         }
 
         let totalCacheTokens = totalCacheRead + totalCacheWrite
@@ -190,19 +220,7 @@ struct AnalyticsEngine {
             return (date: day.date, ratio: Double(day.cacheReadTokens) / Double(total))
         }
 
-        // Tier cost breakdown: use a blended pricing (weighted by session count per model)
-        let blendedPricing: ModelPricing = {
-            // Use the most common model's pricing for tier cost display
-            let modelCounts = sessions.reduce(into: [String: Int]()) { counts, s in
-                counts[getModelFamily(s.primaryModel), default: 0] += 1
-            }
-            let topModel = modelCounts.max(by: { $0.value < $1.value })?.key
-            return getModelPricing(topModel, table: pricingTable)
-        }()
-        let tierCost = CacheTierCost(
-            cost5m: Double(totalCache5m) / 1e6 * blendedPricing.cacheCreation5m,
-            cost1h: Double(totalCache1h) / 1e6 * blendedPricing.cacheCreation1h
-        )
+        let tierCost = CacheTierCost(cost5m: tierCost5m, cost1h: tierCost1h)
 
         // Per-session cache efficiency
         let sessionEfficiency: [SessionCacheEfficiency] = sessions.compactMap { session in
@@ -602,5 +620,52 @@ struct AnalyticsEngine {
         // Validate YYYY-MM-DD format
         guard key.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else { return nil }
         return key
+    }
+
+    struct DaySlice {
+        let day: String
+        let weight: Double
+    }
+
+    // Splits a session's wall-clock span into per-day weights summing to 1.0.
+    // Uses UTC day boundaries so the bucket key matches `dateKey(...)`. Falls back
+    // to a single full-weight slice on the first day if timestamps are missing,
+    // unparseable, or the session ends before it starts.
+    private static func daySplits(firstTimestamp: String, lastTimestamp: String, fallbackDay: String) -> [DaySlice] {
+        guard let start = ISO8601.parse(firstTimestamp),
+              let end = ISO8601.parse(lastTimestamp),
+              end > start else {
+            return [DaySlice(day: fallbackDay, weight: 1.0)]
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+
+        let totalSeconds = end.timeIntervalSince(start)
+        guard totalSeconds > 0 else { return [DaySlice(day: fallbackDay, weight: 1.0)] }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(identifier: "UTC") ?? .current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+
+        var slices: [DaySlice] = []
+        var cursor = start
+        while cursor < end {
+            guard let nextMidnight = calendar.nextDate(
+                after: cursor,
+                matching: DateComponents(hour: 0, minute: 0, second: 0),
+                matchingPolicy: .nextTime
+            ) else { break }
+            let sliceEnd = min(nextMidnight, end)
+            let weight = sliceEnd.timeIntervalSince(cursor) / totalSeconds
+            slices.append(DaySlice(day: formatter.string(from: cursor), weight: weight))
+            cursor = sliceEnd
+        }
+
+        if slices.isEmpty {
+            return [DaySlice(day: fallbackDay, weight: 1.0)]
+        }
+        return slices
     }
 }

@@ -70,6 +70,7 @@ struct MemoryFile: Identifiable, Sendable {
 struct SandboxConfig: Sendable {
     let unsandboxedCommands: [String]
     let enableWeakerNestedSandbox: Bool
+    let deniedDomains: [String]
 }
 
 struct AttributionConfig: Sendable {

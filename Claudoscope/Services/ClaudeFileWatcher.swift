@@ -103,10 +103,12 @@ final class ClaudeFileWatcher: @unchecked Sendable {
             FSEventStreamRelease(stream)
             self.stream = nil
         }
+        // Stream is invalidated above, which drains pending callbacks; only now
+        // is it safe to release the StreamBox the FSEvents context points at.
         streamBox = nil
-        // Clean up timers on the queue where they are created/accessed
         queue.async { [weak self] in
             guard let self else { return }
+            dispatchPrecondition(condition: .onQueue(self.queue))
             for item in self.debounceTimers.values { item.cancel() }
             self.debounceTimers.removeAll()
         }
@@ -117,10 +119,13 @@ final class ClaudeFileWatcher: @unchecked Sendable {
 
         let isCreated = flags & UInt32(kFSEventStreamEventFlagItemCreated) != 0
         let isModified = flags & UInt32(kFSEventStreamEventFlagItemModified) != 0
-
-        guard isCreated || isModified else { return }
+        // Editor-style atomic saves swap files in via rename, so the .jsonl
+        // surface event is ItemRenamed (sometimes paired with ItemInodeMetaMod).
+        let isRenamed = flags & UInt32(kFSEventStreamEventFlagItemRenamed) != 0
+        let isInodeMeta = flags & UInt32(kFSEventStreamEventFlagItemInodeMetaMod) != 0
 
         if path.hasSuffix(".jsonl") {
+            guard isCreated || isModified || isRenamed || isInodeMeta else { return }
             debounceEmit(key: path) {
                 if isCreated {
                     return .sessionCreated(url)
@@ -133,6 +138,7 @@ final class ClaudeFileWatcher: @unchecked Sendable {
                   path.hasSuffix(".mcp.json") ||
                   path.contains("/commands/") ||
                   path.contains("/skills/") {
+            guard isCreated || isModified else { return }
             debounceEmit(key: path) {
                 return .configChanged(url)
             }
@@ -140,11 +146,14 @@ final class ClaudeFileWatcher: @unchecked Sendable {
     }
 
     private func debounceEmit(key: String, event: @escaping () -> FileChange) {
+        dispatchPrecondition(condition: .onQueue(queue))
         debounceTimers[key]?.cancel()
 
         let workItem = DispatchWorkItem { [weak self] in
-            self?.debounceTimers.removeValue(forKey: key)
-            self?.subject.send(event())
+            guard let self else { return }
+            dispatchPrecondition(condition: .onQueue(self.queue))
+            self.debounceTimers.removeValue(forKey: key)
+            self.subject.send(event())
         }
 
         debounceTimers[key] = workItem

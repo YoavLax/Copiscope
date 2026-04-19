@@ -42,9 +42,27 @@ struct ParsedRecordRaw: Decodable, Sendable {
     let isCompactSummary: Bool?
     let isVisibleInTranscriptOnly: Bool?
 
+    // /rename writes type:"custom-title" / type:"agent-name" records
+    // carrying these fields. Kept here so the rest of the record decodes
+    // even when `type` is one of those (and the lenient `try?` on type
+    // means unknown enum cases yield nil instead of dropping the record).
+    let customTitle: String?
+    let agentName: String?
+
+    // Captures the raw `type` string when it doesn't match a known RecordType,
+    // so a future telemetry layer can surface unrecognized record types instead
+    // of silently dropping them.
+    let unknownTypeRaw: String?
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        type = try container.decodeIfPresent(RecordType.self, forKey: .type)
+        let decodedType = try? container.decode(RecordType.self, forKey: .type)
+        type = decodedType
+        if decodedType == nil {
+            unknownTypeRaw = try? container.decode(String.self, forKey: .type)
+        } else {
+            unknownTypeRaw = nil
+        }
         uuid = try container.decodeIfPresent(String.self, forKey: .uuid)
         parentUuid = try container.decodeIfPresent(String.self, forKey: .parentUuid)
         timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
@@ -59,12 +77,15 @@ struct ParsedRecordRaw: Decodable, Sendable {
         toolUseResult = try container.decodeIfPresent(ToolUseResultRaw.self, forKey: .toolUseResult)
         isCompactSummary = try container.decodeIfPresent(Bool.self, forKey: .isCompactSummary)
         isVisibleInTranscriptOnly = try container.decodeIfPresent(Bool.self, forKey: .isVisibleInTranscriptOnly)
+        customTitle = try container.decodeIfPresent(String.self, forKey: .customTitle)
+        agentName = try container.decodeIfPresent(String.self, forKey: .agentName)
     }
 
     enum CodingKeys: String, CodingKey {
         case type, uuid, parentUuid, timestamp, sessionId, cwd, slug
         case message, subtype, content, compactMetadata, logicalParentUuid
         case toolUseResult, isCompactSummary, isVisibleInTranscriptOnly
+        case customTitle, agentName
     }
 }
 

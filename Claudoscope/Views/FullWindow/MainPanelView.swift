@@ -45,6 +45,7 @@ struct MainPanelView: View {
             case .tools:
                 if let session = store.selectedSession {
                     ToolsMainPanelView(session: session)
+                        .id(session.id)
                 } else {
                     EmptyStateView(
                         icon: "wrench.and.screwdriver",
@@ -146,6 +147,7 @@ private struct SessionDetailTabView: View {
                 ChatView(session: session)
             case .agentTree:
                 AgentTreeView(session: session)
+                    .id(session.id)
             }
         }
     }

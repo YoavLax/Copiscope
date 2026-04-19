@@ -189,8 +189,10 @@ extension SettingsMainPanelView {
         let sandbox = ext?.sandbox
         let hasUnsandboxed = !(sandbox?.unsandboxedCommands ?? []).isEmpty
         let weakerSandbox = sandbox?.enableWeakerNestedSandbox ?? false
+        let deniedDomains = sandbox?.deniedDomains ?? []
+        let hasDeniedDomains = !deniedDomains.isEmpty
         let skillShellDisabled = ext?.disableSkillShellExecution ?? false
-        let isDefault = !yolo && !hasUnsandboxed && !weakerSandbox
+        let isDefault = !yolo && !hasUnsandboxed && !weakerSandbox && !hasDeniedDomains
 
         settingsSection(id: "security", icon: "lock.shield", title: "Security") {
             VStack(alignment: .leading, spacing: 8) {
@@ -243,6 +245,28 @@ extension SettingsMainPanelView {
                     .padding(.horizontal, 12)
                 }
 
+                if hasDeniedDomains {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Denied Network Domains")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+
+                        FlowLayout(spacing: 6) {
+                            ForEach(deniedDomains, id: \.self) { domain in
+                                Text(domain)
+                                    .font(Typography.code)
+                                    .foregroundStyle(.red)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.red.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                    }
+                }
+
                 let hasPlugins = !(ext?.plugins ?? []).isEmpty
                 if hasPlugins && !skillShellDisabled {
                     HStack(spacing: 6) {
@@ -271,12 +295,10 @@ extension SettingsMainPanelView {
                     .padding(.horizontal, 12)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle("Real-time secret scanning", isOn: Binding(
-                        get: { store.realtimeSecretScanEnabled },
-                        set: { store.realtimeSecretScanEnabled = $0 }
-                    ))
-                    .toggleStyle(.checkbox)
-                    .font(Typography.body)
+                    @Bindable var store = store
+                    Toggle("Real-time secret scanning", isOn: $store.realtimeSecretScanEnabled)
+                        .toggleStyle(.checkbox)
+                        .font(Typography.body)
 
                     Text("Scan active sessions for leaked secrets and show alerts.")
                         .font(.system(size: 11))
