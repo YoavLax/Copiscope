@@ -45,6 +45,13 @@ struct FullWindowView: View {
             threeColumnLayout
             commandPaletteLayer
         }
+        .overlay(alignment: .top) {
+            if store.isLoading {
+                ScanProgressBanner()
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.3), value: store.isLoading)
+            }
+        }
         .onChange(of: selectedRail) { oldRail, newRail in
             // Save current selection
             savedSelections[oldRail] = (selectedProjectId, selectedSessionId)

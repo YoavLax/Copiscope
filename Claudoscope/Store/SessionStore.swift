@@ -37,6 +37,8 @@ final class SessionStore {
     var analyticsCustomFrom: Date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
     var analyticsCustomTo: Date = Date()
     var isLoading: Bool = true
+    var scanSessionsProcessed: Int = 0
+    var scanSessionsTotal: Int = 0
     var selectedSession: ParsedSession?
 
     // Plans data
@@ -225,7 +227,10 @@ final class SessionStore {
                 parser: parser,
                 pricingTable: pricingTable
             )
-            let (scannedProjects, scannedSessions) = await scanner.scan()
+            let (scannedProjects, scannedSessions) = await scanner.scan { [weak self] processed, total in
+                self?.scanSessionsProcessed = processed
+                self?.scanSessionsTotal = total
+            }
 
             self.projects = scannedProjects
             self.sessionsByProject = scannedSessions
@@ -380,7 +385,20 @@ final class SessionStore {
             from: from,
             to: to
         )
+
+        // Also recompute sidebar analytics (all projects, 30d)
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())
+        sidebarAnalyticsData = AnalyticsEngine.compute(
+            sessions: allSessionsWithProjects,
+            pricingTable: pricingTable,
+            from: thirtyDaysAgo,
+            to: nil
+        )
     }
+
+    /// Cached analytics for the sidebar (always all projects, 30d, for cost ranking).
+    /// Recomputed only when recomputeAnalytics() is called, not on every view access.
+    var sidebarAnalyticsData: AnalyticsData = .empty
 
     func loadSession(id: String, projectId: String, subagentFileName: String? = nil) async {
         let cacheKey = if let subagentFileName {
