@@ -21,5 +21,10 @@ let package = Package(
                 .process("Resources"),
             ]
         ),
+        .testTarget(
+            name: "ClaudoscopeTests",
+            dependencies: ["Claudoscope"],
+            path: "ClaudoscopeTests"
+        ),
     ]
 )

@@ -74,6 +74,9 @@ extension ConfigService {
     }
 
     /// Resolve latest plugin version directories.
+    /// Picks the most recently modified version dir, since version dirnames may be
+    /// non-semver (e.g. content-hashes like "7ed523140f50", or "unknown") and
+    /// lexicographic sort would mis-pick them or order "1.10.0" before "1.9.0".
     func latestPluginVersionDirs() -> [(plugin: String, versionDir: URL)] {
         let cacheDir = claudeDir
             .appendingPathComponent("plugins")
@@ -91,9 +94,17 @@ extension ConfigService {
 
             for plugin in plugins {
                 let pluginDir = marketplaceDir.appendingPathComponent(plugin)
-                guard let versions = try? fm.contentsOfDirectory(atPath: pluginDir.path) else { continue }
-                guard let latestVersion = versions.sorted().last else { continue }
-                results.append((plugin, pluginDir.appendingPathComponent(latestVersion)))
+                guard let versions = try? fm.contentsOfDirectory(atPath: pluginDir.path),
+                      !versions.isEmpty else { continue }
+
+                let dated: [(URL, Date)] = versions.compactMap { version in
+                    let url = pluginDir.appendingPathComponent(version)
+                    let attrs = try? fm.attributesOfItem(atPath: url.path)
+                    let mtime = (attrs?[.modificationDate] as? Date) ?? .distantPast
+                    return (url, mtime)
+                }
+                guard let latest = dated.max(by: { $0.1 < $1.1 })?.0 else { continue }
+                results.append((plugin, latest))
             }
         }
 

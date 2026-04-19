@@ -37,7 +37,11 @@ final class ClaudeFileWatcher: @unchecked Sendable {
 
     @discardableResult
     func start() -> Bool {
-        let projectsDir = claudeDir.appendingPathComponent("projects").path
+        // Watch the whole ~/.claude tree so we catch settings.json edits at the
+        // root and plugin manifest changes under plugins/cache/, not just session
+        // .jsonl files under projects/. The handleFileEvent filters narrow it back
+        // down to the file shapes we care about.
+        let watchRoot = claudeDir.path
 
         let box = StreamBox(self)
         self.streamBox = box
@@ -45,7 +49,7 @@ final class ClaudeFileWatcher: @unchecked Sendable {
         var context = FSEventStreamContext()
         context.info = Unmanaged.passUnretained(box).toOpaque()
 
-        let paths = [projectsDir] as CFArray
+        let paths = [watchRoot] as CFArray
         let flags: FSEventStreamCreateFlags =
             UInt32(kFSEventStreamCreateFlagUseCFTypes) |
             UInt32(kFSEventStreamCreateFlagFileEvents) |
@@ -84,7 +88,7 @@ final class ClaudeFileWatcher: @unchecked Sendable {
             0.1, // latency in seconds
             flags
         ) else {
-            NSLog("[ClaudeFileWatcher] FSEventStreamCreate returned nil for %@", projectsDir)
+            NSLog("[ClaudeFileWatcher] FSEventStreamCreate returned nil for %@", watchRoot)
             self.streamBox = nil
             return false
         }
@@ -124,7 +128,10 @@ final class ClaudeFileWatcher: @unchecked Sendable {
         let isRenamed = flags & UInt32(kFSEventStreamEventFlagItemRenamed) != 0
         let isInodeMeta = flags & UInt32(kFSEventStreamEventFlagItemInodeMetaMod) != 0
 
-        if path.hasSuffix(".jsonl") {
+        // Session .jsonl files only live under ~/.claude/projects/. Now that the
+        // watch root is the whole ~/.claude/ tree, gate on the path component to
+        // ignore unrelated .jsonl files (e.g. ~/.claude/history.jsonl).
+        if path.hasSuffix(".jsonl") && path.contains("/projects/") {
             guard isCreated || isModified || isRenamed || isInodeMeta else { return }
             debounceEmit(key: path) {
                 if isCreated {
@@ -134,8 +141,11 @@ final class ClaudeFileWatcher: @unchecked Sendable {
                 }
             }
         } else if path.hasSuffix("settings.json") ||
+                  path.hasSuffix("settings.local.json") ||
                   path.hasSuffix("mcp.json") ||
                   path.hasSuffix(".mcp.json") ||
+                  path.hasSuffix("plugin.json") ||
+                  path.hasSuffix("hooks.json") ||
                   path.contains("/commands/") ||
                   path.contains("/skills/") {
             guard isCreated || isModified else { return }

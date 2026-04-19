@@ -197,6 +197,22 @@ final class SessionStore {
             }
             .store(in: &cancellables)
 
+        // Debounced config reload: collapse bursts of distinct settings.json /
+        // plugin manifest events into a single loadConfig call. The watcher itself
+        // already debounces per-path at 300ms; this debounces across paths so
+        // editing 3 different files doesn't trigger 3 sequential 6-step reloads.
+        watcher.changes
+            .compactMap { change -> Void? in
+                if case .configChanged = change { return () }
+                return nil
+            }
+            .debounce(for: .milliseconds(250), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                Task { await self.loadConfig(projectId: self.selectedAnalyticsProjectId) }
+            }
+            .store(in: &cancellables)
+
         if !watcher.start() {
             NSLog("[Claudoscope] File watcher failed to start. File changes will not be detected.")
         }
@@ -278,7 +294,7 @@ final class SessionStore {
             await scanForRealtimeSecrets(url: url, sessionId: sessionId, projectId: projectId)
 
         case .configChanged:
-            // Config changes handled in later phases
+            // Handled by the debounced config-reload pipeline in setupWatcher().
             break
 
         case .mustRescan:
@@ -521,7 +537,8 @@ final class SessionStore {
 
     func loadConfig(projectId: String?) async {
         configLoading = true
-        let hooks = await configService.loadHooks()
+        let projectPaths = projects.map { (name: $0.name, path: $0.path) }
+        let hooks = await configService.loadHooks(projectPaths: projectPaths)
         let cmds = await configService.loadCommands()
         let skls = await configService.loadSkills()
         let projectPath = projectId.flatMap { id in projects.first(where: { $0.id == id })?.path }

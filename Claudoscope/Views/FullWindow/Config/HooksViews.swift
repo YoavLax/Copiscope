@@ -141,6 +141,21 @@ struct HooksMainPanelView: View {
                     ForEach(group.rules) { rule in
                         CardView {
                             VStack(alignment: .leading, spacing: 10) {
+                                // Source
+                                HStack(spacing: 6) {
+                                    ConfigSectionHeader(title: "SOURCE")
+                                    Spacer()
+                                    Text(rule.source.label)
+                                        .font(Typography.micro)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(AnyShapeStyle(.quaternary))
+                                        .clipShape(Capsule())
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Divider()
+
                                 // Matcher
                                 HStack(spacing: 6) {
                                     ConfigSectionHeader(title: "MATCHER")

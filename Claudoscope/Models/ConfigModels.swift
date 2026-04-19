@@ -2,6 +2,24 @@ import Foundation
 
 // MARK: - Hook Models
 
+enum HookSource: Sendable, Hashable {
+    case user
+    case project(name: String)
+    case local(name: String)
+    case plugin(name: String)
+    case managed
+
+    var label: String {
+        switch self {
+        case .user: return "user"
+        case .project(let name): return "project: \(name)"
+        case .local(let name): return "local: \(name)"
+        case .plugin(let name): return "plugin: \(name)"
+        case .managed: return "managed"
+        }
+    }
+}
+
 struct HookCommand: Sendable {
     let type: String?       // "command"
     let command: String
@@ -12,6 +30,7 @@ struct HookRule: Identifiable, Sendable {
     let id: String          // generated UUID
     let matcher: String     // tool matcher, or "*" for catch-all
     let hooks: [HookCommand]
+    let source: HookSource
 }
 
 struct HookEventGroup: Identifiable, Sendable {
