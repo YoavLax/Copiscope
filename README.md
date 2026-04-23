@@ -22,13 +22,14 @@
 
 ---
 
-Claudoscope reads your local Claude Code session files (`~/.claude/projects/`) and surfaces them through a compact menu bar widget and a full-featured dashboard window. It provides real-time session tracking, cost estimation, analytics, plan browsing, timeline history, configuration health checks, and **secret scanning that detects leaked credentials in your session history with real-time alerts**, all without sending any data off your machine.
+Claudoscope reads your local Claude Code session files (`~/.claude/projects/`) and surfaces them through a compact menu bar widget and a full-featured dashboard window. It provides real-time session tracking, cost estimation, analytics, plan browsing, timeline history, configuration health checks, and [**secret scanning that detects leaked credentials in your session history with real-time alerts**](#secret-scanning), all without sending any data off your machine.
 
 ## Table of Contents
 
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [How It Works](#how-it-works)
+- [Secret Scanning](#secret-scanning)
 - [Menu Bar Widget](#menu-bar-widget)
 - [Dashboard Window](#dashboard-window)
   - [Analytics](#analytics)
@@ -80,35 +81,54 @@ Download the latest `Claudoscope.dmg` from the [Releases](https://github.com/cor
 
 ## How It Works
 
-Claudoscope monitors `~/.claude/projects/` using macOS FSEvents for near-instant file change detection. When Claude Code writes to a session file (JSONL format), Claudoscope picks up the change, parses the session metadata, and updates the UI in real time. There is no polling, no server process, and no network requests. Everything runs locally as a lightweight menu bar app.
+Claudoscope monitors `~/.claude/projects/` using macOS FSEvents for near-instant detection of changes to JSONL session files. Updates parse incrementally and surface in the UI in real time. No polling, no server process, no network requests, everything runs locally.
 
-On launch, Claudoscope performs a one-time scan of all existing session files to build the initial project and session index. From that point forward, only changed files are re-parsed. Parsed sessions are held in an LRU cache (capacity 20) to keep memory usage low while allowing instant re-access to recently viewed sessions.
+On launch, a one-time scan builds the initial project and session index. After that, only changed files are re-parsed, and parsed sessions are held in an LRU cache (capacity 20) for instant re-access.
 
-The app runs as an accessory process (`LSUIElement = true`), meaning it lives in your menu bar without occupying space in the Dock. When you open the full dashboard window, the Dock icon appears temporarily and disappears again when the window is closed.
+The app runs as an accessory process (`LSUIElement = true`) and lives in your menu bar without a permanent Dock presence. The Dock icon appears only while the dashboard window is open.
+
+## Secret Scanning
+
+Claudoscope detects leaked credentials inside Claude Code session files and alerts you in real time. Eight credential patterns are scanned across your full Claude Code session history:
+
+- Private keys (RSA, OpenSSH, PGP, EC)
+- AWS access keys
+- HTTP `Authorization` headers (Bearer, Basic)
+- API keys and tokens
+- Password literals in code, config, and connection strings
+- Database connection strings with embedded credentials
+- Platform tokens (GitHub, Slack, npm, Stripe, Google)
+- Subprocess credential exposure when env scrubbing is disabled
+
+A multi-stage false-positive filter (Shannon entropy analysis, capture-group value extraction, randomness heuristics, and expanded allowlists for placeholders and conversational context) keeps noise low.
+
+**Real-time alerts**: when a session file is updated, Claudoscope scans the tail of the file for new credentials and pops a floating alert panel on a match. Toggle in Settings > Security.
+
+**Background full-history scan**: a complete sweep of all session files runs in the background under [Config Health](#config-health) and reports every match grouped by rule. Config and session checks load instantly while secret scanning progresses with an inline indicator.
+
+All scanning is local. Detected secrets never leave your machine, and Claudoscope never transmits session content over the network.
 
 ## Menu Bar Widget
 
-The menu bar widget provides a quick glance at your Claude Code activity without leaving what you are working on.
+At-a-glance Claude Code activity without leaving what you are working on.
 
 ![Menu Bar Widget](screenshots/widget.png)
 
-**What the widget shows:**
-
-- **Stats strip**: today's session count, total tokens consumed, estimated cost, and number of active projects
-- **Sparkline chart**: a compact daily usage trend line showing recent activity patterns
-- **Active session card**: if a Claude Code session has been active within the last 60 seconds, it appears here with the session title, model, and token count
-- **Recent sessions**: the three most recently active sessions across all projects, with timestamps and truncated titles
+- **Stats strip**: today's session count, total tokens, estimated cost, and active project count
+- **Sparkline chart**: compact daily usage trend
+- **Active session card**: the live session (active in the last 60 seconds) with title, model, and token count
+- **Recent sessions**: the three most recently active sessions across all projects
 - **Dashboard shortcut**: opens the full dashboard window (Cmd+O)
 
 ## Dashboard Window
 
-The dashboard is a three-column layout: a narrow icon rail on the left for navigation, a sidebar in the middle for lists and filtering, and a main content panel on the right.
+A three-column layout: a narrow icon rail on the left for navigation, a sidebar in the middle for lists and filtering, and a main content panel on the right.
 
 ### Analytics
 
 ![Analytics Dashboard](screenshots/analytics.png)
 
-The analytics view aggregates token usage and cost data across all your Claude Code sessions. A segmented picker switches between three tabs:
+Aggregates token usage and cost data across all your Claude Code sessions. A segmented picker switches between three tabs:
 
 - **Overview**: summary cards (sessions, messages, tokens, cache tokens, estimated cost), daily usage bar chart, project cost breakdown, and model distribution by family
 - **Cache**: hit ratio with cache-busting detection, stability callout, 5-minute vs. 1-hour TTL tier breakdown, per-session efficiency ranking, model-aware savings estimate, and cached vs. uncached cost comparison
@@ -118,7 +138,7 @@ All tabs share a time range selector (7/30/90 days or custom) and an optional pr
 
 ### Sessions
 
-The sessions view is the core session explorer. The sidebar lists all projects discovered under `~/.claude/projects/`, with sessions grouped by project. Each session row shows inline badges for observability signals: error indicators (rate limits, auth failures, tool errors), idle/zombie gap warnings, and git worktree markers. Selecting a session loads the full conversation in the main panel.
+The core session explorer. The sidebar lists all projects discovered under `~/.claude/projects/`, with sessions grouped by project. Each session row shows inline observability badges: error indicators (rate limits, auth failures, tool errors), idle/zombie gap warnings, and git worktree markers.
 
 The chat view renders the complete conversation thread with:
 
@@ -127,60 +147,58 @@ The chat view renders the complete conversation thread with:
 - Inline cost estimates per message
 - Tool result content (file reads, bash output, search results)
 - Error indicators on sessions or tool calls that encountered failures
-- In-conversation search that finds text inside messages, thinking blocks, tool inputs, and tool results, with auto-expansion of matching collapsed blocks
+- In-conversation search across messages, thinking blocks, tool inputs, and tool results, with auto-expansion of matching collapsed blocks
 
 ### Tools
 
-The tools view extracts tool call data from conversation history and presents it per session. Each session shows a category breakdown (Read, Write, Exec, Other) and a detailed list of individual tool calls. Tool analytics surface total calls, error rate, and unique files touched across sessions.
+Tool call data extracted from conversation history and presented per session, with a category breakdown (Read, Write, Exec, Other) and a detailed list of individual tool calls. Surfaces total calls, error rate, and unique files touched across sessions.
 
 ### Plans
 
-The plans view lists all plan files created by Claude Code's `/plan` command. Plans are displayed with their title, creation date, and the project they belong to. Selecting a plan renders the full markdown content in the main panel.
+All plan files created by Claude Code's `/plan` command, with title, creation date, and project. Selecting a plan renders the full markdown content.
 
 ### Timeline
 
-The timeline view shows a chronological history of Claude Code activity across all projects from the last 7 days. Each entry represents a session event with its timestamp, project context, and session title. This provides a unified view of when and where you used Claude Code.
+Chronological history of Claude Code activity across all projects from the last 7 days. Each entry shows timestamp, project context, and session title.
 
 ### Hooks
 
-The hooks view reads your Claude Code hook configuration and displays all registered hooks grouped by event type: `PreToolUse`, `PostToolUse`, `PermissionDenied`, `SessionStart`, `Stop`, `UserPromptSubmit`, and `Notification`. Each hook entry shows its matcher pattern, the command it runs, and its timeout setting.
+All registered Claude Code hooks merged from five sources (user, project, project-local, plugin, managed) and grouped by event type, including `PreToolUse`, `PostToolUse`, `PermissionDenied`, `SessionStart`, `SessionEnd`, `Stop`, `UserPromptSubmit`, `Notification`, `PreCompact`, `PostToolUseFailure`, `FileChanged`, and any new event types as they appear. Each entry shows matcher pattern, command, timeout, and source label.
 
 ### Commands
 
-The commands view lists all custom slash commands defined in your Claude Code configuration. Each command is displayed with its name, and selecting one renders the full command definition (typically markdown with the prompt template) in the main panel.
+All custom slash commands defined in your Claude Code configuration. Selecting a command renders its full markdown definition with the prompt template.
 
 ### Skills
 
 ![Skills View](screenshots/skills.png)
 
-The skills view displays all installed Claude Code skills. Skills are shown with their name and trigger description. Selecting a skill renders its full definition and documentation in the main panel.
+All installed Claude Code skills, with name and trigger description. Selecting a skill renders its full definition and documentation.
 
 ### MCPs
 
-The MCPs (Model Context Protocol servers) view shows all configured MCP servers from your Claude Code settings. Each entry displays the server name, command, arguments, and environment variables.
+All configured MCP (Model Context Protocol) servers from your Claude Code settings, with server name, command, arguments, and environment variables.
 
 ### Memory
 
-The memory view lists all CLAUDE.md and memory files that Claude Code uses for persistent context. This includes the global `~/.claude/CLAUDE.md`, project-level `CLAUDE.md` files, and auto-memory files. Selecting a file renders its markdown content in the main panel.
+All `CLAUDE.md` and memory files Claude Code uses for persistent context: the global `~/.claude/CLAUDE.md`, project-level `CLAUDE.md` files, and auto-memory files. Selecting a file renders its markdown content.
 
 ### Config Health
 
-The config health view runs 45 lint rules across your Claude Code configuration, sessions, and security posture, and reports issues grouped into four categories: Security, Session Performance, Skills & Hooks, and Configuration.
+Runs 45 lint rules across your Claude Code configuration, sessions, and security posture, grouped into four categories: Security, Session Performance, Skills & Hooks, and Configuration.
 
-- **Health score**: a weighted summary (Excellent / Good / Fair / Poor) based on error and warning counts
-- **Severity filters**: click any stat card (Errors, Warnings, Info) to toggle that severity on or off in the results
-- **Group by Rule**: the default view groups all results by rule ID, so a rule like "Missing description" shows once with a count and expandable list of affected skills, instead of 28 identical rows
-- **Group by File**: switch to a flat list of all issues ordered by file
+- **Health score**: weighted summary (Excellent / Good / Fair / Poor) from error and warning counts
+- **Severity filters**: click any stat card (Errors, Warnings, Info) to toggle on or off
+- **Group by Rule** (default): collapses repeats, so "Missing description" shows once with a count and expandable list of affected skills, not 28 identical rows
+- **Group by File**: flat list of all issues ordered by file
 - **Rescan**: re-run all checks without switching tabs
-- **Skill display names**: skills are identified by their directory name (e.g., "animate", "context7") rather than the repeated filename "SKILL.md"
+- **Skill display names**: skills identified by directory name (e.g. "animate", "context7") instead of the repeated "SKILL.md" filename
 
-Rules cover CLAUDE.md size and structure (CMD), rules YAML frontmatter and glob validation (RUL), skill metadata completeness and naming conventions (SKL), cross-cutting token budget estimates (XCT), and settings validation (CFG).
+Rule families: CLAUDE.md size and structure (**CMD**), rules YAML frontmatter and glob validation (**RUL**), skill metadata completeness and naming conventions (**SKL**), cross-cutting token budget estimates (**XCT**), and settings validation (**CFG**).
 
-The health screen also runs **secret detection** (SEC rules) that scans session JSONL files for accidentally leaked credentials. Eight patterns are checked: private keys, AWS access keys, authorization headers, API keys/tokens, password literals, connection strings with credentials, platform tokens (GitHub, Slack, npm, Stripe, Google), and credential exposure when subprocess env scrubbing is disabled. A multi-stage filter pipeline reduces false positives using Shannon entropy analysis, capture-group value extraction, randomness heuristics, and expanded allowlists for placeholders and conversational context. Results load progressively: config and session checks appear instantly while secret scanning runs in the background with an inline progress indicator.
+**Secret detection** (**SEC** rules) scans session JSONL files for accidentally leaked credentials across eight patterns, with a multi-stage false-positive filter and real-time alerts on new matches. See [Secret Scanning](#secret-scanning) for the full feature.
 
-**Real-time secret alerts**: when a session file is updated, Claudoscope scans the tail of the file for secrets and shows a floating alert panel if a match is found. This can be toggled on or off in Settings > Security.
-
-In addition to configuration and secret checks, the health screen runs **session health checks** (SES rules) that analyze actual usage data from the last 30 days:
+**Session health checks** (**SES** rules) analyze actual usage data from the last 30 days:
 
 - **SES001**: session cost exceeded $25
 - **SES002**: conversation triggered frequent context compaction
@@ -189,26 +207,26 @@ In addition to configuration and secret checks, the health screen runs **session
 - **SES005**: session experienced API errors (rate limits, auth failures, proxy errors, tool errors)
 - **SES006**: session resumed after 75+ minutes idle without `/clear` (zombie session)
 
-Each session triggers at most one check (the most severe), and results are capped at 10 to avoid flooding the health score. Session results include token and message count badges, and clicking "View Session" navigates directly to the session in the Sessions rail.
+Each session triggers at most one check (the most severe), capped at 10 results. Session results carry token and message count badges; "View Session" navigates directly to the session in the Sessions rail.
 
-**Settings validation** (CFG rules) checks your `settings.json` for misconfigurations: sandbox enabled without lock files, contradictory filesystem permissions, bare mode conflicting with hooks/MCP, missing subprocess environment scrubbing, and skill shell execution without restriction.
+**Settings validation** (**CFG** rules) checks your `settings.json` for misconfigurations: sandbox enabled without lock files, contradictory filesystem permissions, bare mode conflicting with hooks/MCP, missing subprocess environment scrubbing, and skill shell execution without restriction.
 
 ### Settings
 
 ![Settings](screenshots/settings.png)
 
-The settings view reads your `~/.claude/settings.json` and presents each configuration section in an organized, browsable layout:
+Reads your `~/.claude/settings.json` and presents each configuration section in an organized layout:
 
-- **Appearance**: switch between System, Light, and Dark themes. The selected theme applies to the dashboard window immediately.
-- **Model**: shows the currently configured default model.
-- **Permissions**: displays permission rules, including denied file patterns for read and edit operations.
-- **Security**: surfaces security-related flags such as YOLO mode status, dangerous permission prompt handling, weaker sandbox settings, and skill shell execution status. Includes a toggle to enable or disable real-time secret scanning alerts.
-- **Attribution**: attribution and credit configuration.
-- **Plugins**: lists all installed plugins with their source marketplaces, and shows any extra marketplace sources.
-- **Account**: displays account metadata including startup count, last release notes version, onboarding status, and key bindings.
-- **General**: transcript retention period, auto-memory toggle, and other general preferences.
-- **Environment**: environment-level configuration values.
-- **Pricing**: choose between Anthropic API and Vertex AI pricing, with region selection for Vertex (Global, us-east5, europe-west1, asia-southeast1). Changing the pricing configuration recalculates all cost estimates across the app.
+- **Appearance**: System, Light, or Dark theme, applied to the dashboard immediately
+- **Model**: currently configured default model
+- **Permissions**: permission rules and denied file patterns for read and edit operations
+- **Security**: YOLO mode status, dangerous permission prompt handling, weaker sandbox settings, skill shell execution status, plus a toggle for real-time secret scanning alerts
+- **Attribution**: attribution and credit configuration
+- **Plugins**: installed plugins, source marketplaces, and any extra marketplace sources
+- **Account**: startup count, last release notes version, onboarding status, key bindings
+- **General**: transcript retention period, auto-memory toggle, and other preferences
+- **Environment**: environment-level configuration values
+- **Pricing**: Anthropic API or Vertex AI pricing with region selection (Global, us-east5, europe-west1, asia-southeast1). Changing the pricing configuration recalculates all cost estimates across the app.
 
 ## Command Palette
 
@@ -218,20 +236,15 @@ Press **Cmd+K** to open the command palette for quick navigation between rails a
 
 Claudoscope estimates session costs from raw token counts stored in JSONL session files. These are informational estimates based on published API pricing, not actual billing data.
 
-The estimation process:
+For each assistant response, the JSONL parser accumulates four counters from the `usage` field: input tokens, output tokens, cache read tokens, and cache creation tokens. The model ID (e.g. `claude-opus-4-6-20250313`) maps to a pricing family, since Opus 4.5+ and Haiku 4.5+ price differently from earlier versions. Three pricing tables are built in (dollars per million tokens):
 
-1. **Token extraction**: the JSONL parser reads each assistant response and accumulates four token counters from the `usage` field: input tokens, output tokens, cache read tokens, and cache creation tokens.
+- **Anthropic API (direct)**: standard published rates including cache creation charges
+- **Vertex AI (Global)**: same input/output rates as Anthropic, cache creation is free
+- **Vertex AI (Regional)**: 10% surcharge over global rates on input, output, and cache read
 
-2. **Model family detection**: the model ID string (e.g., `claude-opus-4-6-20250313`) is mapped to a pricing family. The version number matters because Opus 4.5+ and Haiku 4.5+ have different pricing from their predecessors.
+Per-session cost is `(input + output + cache_read + cache_creation) / 1M`, each multiplied by its model rate.
 
-3. **Pricing tables**: three tables are built in, all in dollars per million tokens:
-   - **Anthropic API (direct)**: standard published rates including cache creation charges
-   - **Vertex AI (Global)**: same input/output rates as Anthropic, but cache creation is free
-   - **Vertex AI (Regional)**: 10% surcharge over global rates on input, output, and cache read
-
-4. **Cost formula**: for each session, cost = (input / 1M * rate) + (output / 1M * rate) + (cache_read / 1M * rate) + (cache_creation / 1M * rate)
-
-**Caveat**: these are estimates. Actual billed amounts depend on factors Claudoscope cannot observe, such as batch vs. real-time pricing tiers, committed-use discounts, or billing adjustments.
+**Caveat**: actual billed amounts depend on factors Claudoscope cannot observe, such as batch vs. real-time pricing tiers, committed-use discounts, or billing adjustments.
 
 ## License
 
