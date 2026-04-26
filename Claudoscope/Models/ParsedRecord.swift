@@ -133,9 +133,9 @@ struct MessageRaw: Decodable, Sendable {
         model = try container.decodeIfPresent(String.self, forKey: .model)
         stopReason = try container.decodeIfPresent(String.self, forKey: .stopReason)
         usage = try container.decodeIfPresent(TokenUsageRaw.self, forKey: .usage)
-        id = decoder.decodeMode == .full
-            ? try container.decodeIfPresent(String.self, forKey: .id)
-            : nil
+        // Always decode id; needed in lite mode for cost dedup, since Claude Code
+        // re-persists the same API response (same msg_id) across tool-use turns.
+        id = try container.decodeIfPresent(String.self, forKey: .id)
     }
 }
 

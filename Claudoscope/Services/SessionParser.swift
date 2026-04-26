@@ -39,6 +39,7 @@ actor SessionParser {
         var slug: String?
         var isFirstRecord = true
         var projectId = ""
+        var seenMessageIds = Set<String>()
 
         for line in StreamingLineReader(fileHandle: fileHandle) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -94,10 +95,16 @@ actor SessionParser {
                 assistantMessageCount += 1
 
                 if record.message?.stopReason != nil, let usage = record.message?.usage {
-                    totalInputTokens += usage.inputTokens ?? 0
-                    totalOutputTokens += usage.outputTokens ?? 0
-                    totalCacheReadTokens += usage.cacheReadInputTokens ?? 0
-                    totalCacheCreationTokens += usage.cacheCreationInputTokens ?? 0
+                    // Dedup by message id (see parseMetadata for context).
+                    let msgId = record.message?.id
+                    let alreadyCounted = msgId.map { seenMessageIds.contains($0) } ?? false
+                    if !alreadyCounted {
+                        if let id = msgId { seenMessageIds.insert(id) }
+                        totalInputTokens += usage.inputTokens ?? 0
+                        totalOutputTokens += usage.outputTokens ?? 0
+                        totalCacheReadTokens += usage.cacheReadInputTokens ?? 0
+                        totalCacheCreationTokens += usage.cacheCreationInputTokens ?? 0
+                    }
                 }
 
                 if let model = record.message?.model {
@@ -196,6 +203,11 @@ actor SessionParser {
         // Bug fix: use local dedup set instead of actor-level seenUUIDs
         // to avoid cross-session dedup that causes costs to drop to $0 over time
         var localSeenUUIDs = Set<String>()
+        // Primary dedup key. Claude Code re-persists the same Anthropic API response
+        // (same msg_xxx id) across tool-use turn boundaries: different uuids and
+        // timestamps but identical usage block. Counting each copy inflated cost
+        // by ~80% on tool-heavy sessions (Igor: $1616 -> $922, vs $898 actual bill).
+        var localSeenMessageIds = Set<String>()
 
         let projectId = deriveProjectId(from: url)
         var lineCount = 0
@@ -306,7 +318,12 @@ actor SessionParser {
                     }
 
                     if raw.message?.stopReason != nil, let usage = raw.message?.usage {
-                        // Deduplicate: skip records already counted from another file
+                        // Primary dedup: same Anthropic message id = same billable API call.
+                        if let msgId = raw.message?.id {
+                            if localSeenMessageIds.contains(msgId) { continue }
+                            localSeenMessageIds.insert(msgId)
+                        }
+                        // Secondary dedup: same record uuid (legacy continuation-file case).
                         if let uuid = raw.uuid {
                             if localSeenUUIDs.contains(uuid) { continue }
                             localSeenUUIDs.insert(uuid)
