@@ -147,7 +147,8 @@ final class ClaudeFileWatcher: @unchecked Sendable {
                   path.hasSuffix("plugin.json") ||
                   path.hasSuffix("hooks.json") ||
                   path.contains("/commands/") ||
-                  path.contains("/skills/") {
+                  path.contains("/skills/") ||
+                  path.contains("/themes/") {
             guard isCreated || isModified else { return }
             debounceEmit(key: path) {
                 return .configChanged(url)

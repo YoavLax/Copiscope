@@ -57,6 +57,7 @@ final class SessionStore {
     var mcpServers: [McpServerEntry] = []
     var memoryFiles: [MemoryFile] = []
     var extendedConfig: ExtendedConfig?
+    var themes: [ThemeFile] = []
     var configLoading: Bool = false
 
     // Observability data
@@ -565,12 +566,14 @@ final class SessionStore {
         let mcps = await configService.loadMcpServers(projectPath: projectPath)
         let memory = await configService.loadMemoryFiles(projectId: projectId)
         let extended = await configService.loadExtendedConfig()
+        let loadedThemes = await configService.loadThemes()
         self.hookGroups = hooks
         self.commands = cmds
         self.skills = skls
         self.mcpServers = mcps
         self.memoryFiles = memory
         self.extendedConfig = extended
+        self.themes = loadedThemes
         self.configLoading = false
     }
 

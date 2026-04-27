@@ -1,11 +1,17 @@
 # Changelog
 
 ## [Unreleased]
+
+## [0.6.2]
 ### New Features
+- Settings rail surfaces the new `prUrlTemplate` top-level key from Claude Code 2.1.119, rendered in the Attribution section alongside the commit and PR templates.
+- Settings rail gains a Themes section that enumerates `~/.claude/themes/*.json` (introduced in Claude Code 2.1.118), showing each theme by name with its modification date and an "active" badge for the theme referenced in `~/.claude.json`.
+- Hooks rail detail view links to the official Anthropic hooks documentation and notes that PostToolUse and PostToolUseFailure hook stdin includes `duration_ms` as of Claude Code 2.1.119.
 - Secret scanning: new SEC009 detector for Slack incoming webhook URLs (ERROR severity, supports services/workflows/triggers paths).
-- Secret scanning: new SEC010 critical-credential tier (ERROR severity) for account-level platform tokens — Stripe live/prod keys, Stripe webhook signing secrets, OpenAI service-account and admin keys, Anthropic admin keys, Azure storage AccountKeys, and Vault tokens. The latter four were previously WARNING under SEC007.
+- Secret scanning: new SEC010 critical-credential tier (ERROR severity) for account-level platform tokens, covering Stripe live/prod keys, Stripe webhook signing secrets, OpenAI service-account and admin keys, Anthropic admin keys, Azure storage AccountKeys, and Vault tokens. The latter four were previously WARNING under SEC007.
 
 ### Improvements
+- File watcher now treats edits under `~/.claude/themes/` as config changes, so the new Themes section live-reloads on edit.
 - SEC007 platform-token detection extended with verified vendor formats from gitleaks: GitHub OAuth/server/user/refresh tokens (gho_/ghs_/ghu_/ghr_), OpenAI project keys (sk-proj- with the T3BlbkFJ literal anchor), legacy OpenAI keys (\bsk-…{48}\b with word boundaries), SendGrid (SG.x.y), Shopify (shp[atspc]_ all four prefixes), DigitalOcean (dop_v1_), Linear (lin_api_), and PyPI (pypi-AgEIcHlwaS5vcmcC… macaroons).
 - SEC004 keyword group extended to recognize `aws_secret_access_key` and `aws_secret_key` assignments.
 - SEC007 sk-ant- alternation now uses a negative lookahead to avoid double-matching admin01 keys (which live in SEC010).

@@ -12,6 +12,7 @@ struct SettingsSidebarContent: View {
         ("permissions", "shield", "Permissions"),
         ("security", "lock.shield", "Security"),
         ("attribution", "signature", "Attribution"),
+        ("themes", "paintpalette", "Themes"),
         ("plugins", "puzzlepiece", "Plugins"),
         ("account", "person.crop.circle", "Account"),
         ("general", "gear", "General"),

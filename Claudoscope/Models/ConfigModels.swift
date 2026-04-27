@@ -130,7 +130,18 @@ struct ExtendedConfig: Sendable {
     let skipDangerousModePermissionPrompt: Bool
     let disableSkillShellExecution: Bool
     let attribution: AttributionConfig?
+    let prUrlTemplate: String?
     let plugins: [PluginInfo]
     let marketplaces: [MarketplaceSource]
     let profile: ClaudeProfile?
+}
+
+// MARK: - Theme Models
+
+struct ThemeFile: Identifiable, Sendable {
+    var id: String { name }
+    let name: String          // filename without .json
+    let path: String
+    let mtime: Date?
+    let isActive: Bool        // matches ~/.claude.json's `theme` field
 }

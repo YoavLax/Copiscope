@@ -509,46 +509,26 @@ extension SettingsMainPanelView {
 
     @ViewBuilder
     func attributionSection() -> some View {
+        let attr = store.extendedConfig?.attribution
+        let prUrlTemplate = store.extendedConfig?.prUrlTemplate
+        let hasAnything = attr != nil || (prUrlTemplate?.isEmpty == false)
+
         settingsSection(id: "attribution", icon: "signature", title: "Attribution") {
-            if let attr = store.extendedConfig?.attribution {
+            if hasAnything {
                 VStack(alignment: .leading, spacing: 8) {
-                    if let commit = attr.commitTemplate {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Commit Template")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 12)
-
-                            Text(commit)
-                                .font(Typography.code)
-                                .padding(8)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(AnyShapeStyle(.quaternary))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .padding(.horizontal, 12)
-                                .textSelection(.enabled)
-                        }
+                    if let commit = attr?.commitTemplate {
+                        attributionRow(label: "Commit Template", value: commit)
                     }
 
-                    if let pr = attr.prTemplate {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("PR Template")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 12)
-
-                            Text(pr)
-                                .font(Typography.code)
-                                .padding(8)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(AnyShapeStyle(.quaternary))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .padding(.horizontal, 12)
-                                .textSelection(.enabled)
-                        }
+                    if let pr = attr?.prTemplate {
+                        attributionRow(label: "PR Template", value: pr)
                     }
 
-                    if attr.hasDeprecatedCoAuthoredBy {
+                    if let prUrl = prUrlTemplate, !prUrl.isEmpty {
+                        attributionRow(label: "PR URL Template", value: prUrl)
+                    }
+
+                    if attr?.hasDeprecatedCoAuthoredBy == true {
                         HStack(spacing: 6) {
                             Image(systemName: "exclamationmark.triangle")
                                 .font(.system(size: 11))
@@ -564,6 +544,82 @@ extension SettingsMainPanelView {
                 settingsEmptyHint("No attribution templates configured.")
             }
         }
+    }
+
+    @ViewBuilder
+    private func attributionRow(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+
+            Text(value)
+                .font(Typography.code)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AnyShapeStyle(.quaternary))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .padding(.horizontal, 12)
+                .textSelection(.enabled)
+        }
+    }
+
+    // MARK: - Themes Section (Claude Code 2.1.118+)
+
+    @ViewBuilder
+    func themesSection() -> some View {
+        let themes = store.themes
+        settingsSection(id: "themes", icon: "paintpalette", title: "Themes") {
+            if themes.isEmpty {
+                settingsEmptyHint("No custom themes. Create one with /theme in Claude Code, or add JSON files to ~/.claude/themes/.")
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(themes.enumerated()), id: \.element.id) { index, theme in
+                        themeRow(theme)
+                        if index < themes.count - 1 {
+                            Divider().padding(.horizontal, 12)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func themeRow(_ theme: ThemeFile) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(theme.name)
+                        .font(Typography.bodyMedium)
+                    if theme.isActive {
+                        Text("active")
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.accentColor.opacity(0.15))
+                            .foregroundStyle(Color.accentColor)
+                            .clipShape(Capsule())
+                    }
+                }
+                if let mtime = theme.mtime {
+                    Text("modified \(mtime.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     // MARK: - Plugins Section

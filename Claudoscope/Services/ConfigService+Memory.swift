@@ -94,6 +94,8 @@ extension ConfigService {
             attribution = nil
         }
 
+        let prUrlTemplate = settings["prUrlTemplate"] as? String
+
         // Plugins
         var plugins: [PluginInfo] = []
         if let enabledDict = settings["enabledPlugins"] as? [String: Any] {
@@ -170,6 +172,7 @@ extension ConfigService {
             skipDangerousModePermissionPrompt: yolo,
             disableSkillShellExecution: disableSkillShell,
             attribution: attribution,
+            prUrlTemplate: prUrlTemplate,
             plugins: plugins,
             marketplaces: marketplaces,
             profile: profile

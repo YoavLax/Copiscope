@@ -94,6 +94,8 @@ private struct HookEventRow: View {
 }
 
 struct HooksMainPanelView: View {
+    static let eventsWithDurationMs: Set<String> = ["PostToolUse", "PostToolUseFailure"]
+
     let hookGroups: [HookEventGroup]
     let selectedEventId: String?
 
@@ -126,6 +128,16 @@ struct HooksMainPanelView: View {
 
                 Spacer()
 
+                Link(destination: URL(string: "https://docs.claude.com/en/docs/claude-code/hooks")!) {
+                    HStack(spacing: 3) {
+                        Text("Hook reference")
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.system(size: 10))
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                }
+
                 Text("\(group.rules.count) rule\(group.rules.count == 1 ? "" : "s")")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -133,6 +145,21 @@ struct HooksMainPanelView: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             .background(.bar)
+
+            if Self.eventsWithDurationMs.contains(group.event) {
+                HStack(spacing: 6) {
+                    Image(systemName: "stopwatch")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("Hook stdin includes duration_ms (Claude Code 2.1.119+).")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 6)
+                .background(.bar.opacity(0.5))
+            }
 
             Divider()
 
