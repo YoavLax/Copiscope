@@ -70,8 +70,10 @@ enum LintCheckId: String, Sendable, CaseIterable {
     case SEC004  // API key/token
     case SEC005  // password/secret literal
     case SEC006  // connection string with credentials
-    case SEC007  // platform token (GitHub, Slack, npm, Stripe, Google)
+    case SEC007  // platform token (GitHub, Slack, npm, Stripe, Google, OpenAI, vendor expansion)
     case SEC008  // ENV_SCRUB not set with credential patterns in tool output
+    case SEC009  // Slack incoming webhook URL
+    case SEC010  // critical platform token (account-level credentials)
 }
 
 struct LintResult: Identifiable, Sendable {

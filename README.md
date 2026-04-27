@@ -89,15 +89,17 @@ The app runs as an accessory process (`LSUIElement = true`) and lives in your me
 
 ## Secret Scanning
 
-Claudoscope detects leaked credentials inside Claude Code session files and alerts you in real time. Eight credential patterns are scanned across your full Claude Code session history:
+Claudoscope detects leaked credentials inside Claude Code session files and alerts you in real time. Ten credential patterns are scanned across your full Claude Code session history:
 
 - Private keys (RSA, OpenSSH, PGP, EC)
-- AWS access keys
+- AWS access keys and secret access keys
 - HTTP `Authorization` headers (Bearer, Basic)
 - API keys and tokens
 - Password literals in code, config, and connection strings
 - Database connection strings with embedded credentials
-- Platform tokens (GitHub, Slack, npm, Stripe, Google)
+- Platform tokens (GitHub PATs/OAuth, OpenAI, Anthropic, Stripe, Slack, npm, Google, SendGrid, Shopify, DigitalOcean, Linear, PyPI, HuggingFace, Azure, Vault, Docker)
+- Slack incoming webhook URLs
+- Critical platform tokens (Stripe live keys, Stripe webhook secrets, OpenAI service/admin keys, Anthropic admin keys, Azure storage account keys, Vault tokens) escalated to ERROR severity
 - Subprocess credential exposure when env scrubbing is disabled
 
 A multi-stage false-positive filter (Shannon entropy analysis, capture-group value extraction, randomness heuristics, and expanded allowlists for placeholders and conversational context) keeps noise low.
@@ -196,7 +198,7 @@ Runs 45 lint rules across your Claude Code configuration, sessions, and security
 
 Rule families: CLAUDE.md size and structure (**CMD**), rules YAML frontmatter and glob validation (**RUL**), skill metadata completeness and naming conventions (**SKL**), cross-cutting token budget estimates (**XCT**), and settings validation (**CFG**).
 
-**Secret detection** (**SEC** rules) scans session JSONL files for accidentally leaked credentials across eight patterns, with a multi-stage false-positive filter and real-time alerts on new matches. See [Secret Scanning](#secret-scanning) for the full feature.
+**Secret detection** (**SEC** rules) scans session JSONL files for accidentally leaked credentials across ten patterns, with a multi-stage false-positive filter and real-time alerts on new matches. See [Secret Scanning](#secret-scanning) for the full feature.
 
 **Session health checks** (**SES** rules) analyze actual usage data from the last 30 days:
 
