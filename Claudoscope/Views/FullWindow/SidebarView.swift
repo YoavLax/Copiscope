@@ -150,7 +150,7 @@ private struct SessionsSidebarContent: View {
         if filterText.isEmpty { return projects }
         return projects.filter { project in
             project.name.localizedCaseInsensitiveContains(filterText) ||
-            (sessionsByProject[project.id] ?? []).contains { session in
+            visibleSessions(for: project).contains { session in
                 session.title.localizedCaseInsensitiveContains(filterText)
             }
         }
@@ -170,8 +170,14 @@ private struct SessionsSidebarContent: View {
         .padding(.vertical, 4)
     }
 
+    // Subagents are hidden from the sidebar — their UUID titles add noise and
+    // they're already represented by their parent session row.
+    private func visibleSessions(for project: Project) -> [SessionSummary] {
+        (sessionsByProject[project.id] ?? []).filter { !$0.isSubagent }
+    }
+
     private func filteredSessions(for project: Project) -> [SessionSummary] {
-        let sessions = sessionsByProject[project.id] ?? []
+        let sessions = visibleSessions(for: project)
         if filterText.isEmpty { return sessions }
         return sessions.filter { $0.title.localizedCaseInsensitiveContains(filterText) }
     }

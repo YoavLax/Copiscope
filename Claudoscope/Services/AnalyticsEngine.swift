@@ -33,7 +33,12 @@ struct AnalyticsEngine {
         var modelMap: [String: ModelUsage] = [:]
 
         for (session, project) in filtered {
-            totalSessions += 1
+            // Subagents contribute tokens/cost but are not standalone "sessions" from
+            // the user's POV — gating sessionCount keeps the dashboard's session counter
+            // honest while still reflecting real spend in totalCost / totalTokens.
+            if !session.isSubagent {
+                totalSessions += 1
+            }
             totalMessages += session.messageCount
             let sessionTokens = session.totalInputTokens + session.totalOutputTokens
             totalTokens += sessionTokens
@@ -65,6 +70,7 @@ struct AnalyticsEngine {
                     let cacheCreation1hTokens = Int((Double(session.totalCacheCreation1hTokens) * weight).rounded())
                     let messageCount = Int((Double(session.messageCount) * weight).rounded())
                     let sliceCost = cost * weight
+                    let countsAsSession = isFirst && !session.isSubagent
                     if var existing = dailyMap[slice.day] {
                         existing.inputTokens += inputTokens
                         existing.outputTokens += outputTokens
@@ -72,7 +78,7 @@ struct AnalyticsEngine {
                         existing.cacheCreationTokens += cacheCreationTokens
                         existing.cacheCreation5mTokens += cacheCreation5mTokens
                         existing.cacheCreation1hTokens += cacheCreation1hTokens
-                        if isFirst { existing.sessionCount += 1 }
+                        if countsAsSession { existing.sessionCount += 1 }
                         existing.messageCount += messageCount
                         existing.estimatedCost += sliceCost
                         dailyMap[slice.day] = existing
@@ -85,7 +91,7 @@ struct AnalyticsEngine {
                             cacheCreationTokens: cacheCreationTokens,
                             cacheCreation5mTokens: cacheCreation5mTokens,
                             cacheCreation1hTokens: cacheCreation1hTokens,
-                            sessionCount: isFirst ? 1 : 0,
+                            sessionCount: countsAsSession ? 1 : 0,
                             messageCount: messageCount,
                             estimatedCost: sliceCost
                         )
@@ -94,10 +100,11 @@ struct AnalyticsEngine {
             }
 
             // Project costs
+            let projectSessionDelta = session.isSubagent ? 0 : 1
             if var pc = projectCostMap[project.id] {
                 pc.totalCost += cost
                 pc.totalTokens += sessionTokens
-                pc.sessionCount += 1
+                pc.sessionCount += projectSessionDelta
                 pc.messageCount += session.messageCount
                 projectCostMap[project.id] = pc
             } else {
@@ -106,7 +113,7 @@ struct AnalyticsEngine {
                     projectName: project.name,
                     totalCost: cost,
                     totalTokens: sessionTokens,
-                    sessionCount: 1,
+                    sessionCount: projectSessionDelta,
                     messageCount: session.messageCount
                 )
             }
@@ -222,8 +229,10 @@ struct AnalyticsEngine {
 
         let tierCost = CacheTierCost(cost5m: tierCost5m, cost1h: tierCost1h)
 
-        // Per-session cache efficiency
+        // Per-session cache efficiency. Skip subagents — their UUID titles would
+        // pollute the leaderboard and they're already accounted for in totals.
         let sessionEfficiency: [SessionCacheEfficiency] = sessions.compactMap { session in
+            guard !session.isSubagent else { return nil }
             let readTokens = session.totalCacheReadTokens
             let writeTokens = session.totalCacheCreationTokens
             let total = readTokens + writeTokens

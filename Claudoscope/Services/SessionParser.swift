@@ -14,6 +14,37 @@ actor SessionParser {
         return d
     }()
 
+    /// First pass over a JSONL file collecting every `message.id` that has at
+    /// least one record carrying `stop_reason`. Used by the main parse loop to
+    /// distinguish ordinary streaming intermediates (which we drop because the
+    /// stop_reason record carries the cumulative usage) from "orphan" records
+    /// whose stream never produced a stop_reason record (aborted streams,
+    /// transcript truncation, crashes). Anthropic still bills for orphan calls,
+    /// so we want to count one of them per msg.id even without stop_reason.
+    ///
+    /// Perf: this doubles file I/O on the parse path. Acceptable for now;
+    /// targeted for a single-pass refactor (orphan-buffer + flush at EOF) in
+    /// the next release.
+    private func collectStopReasonMessageIds(url: URL) -> Set<String> {
+        guard let fh = FileHandle(forReadingAtPath: url.path) else { return [] }
+        defer { fh.closeFile() }
+        var ids = Set<String>()
+        for line in StreamingLineReader(fileHandle: fh) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            guard let data = trimmed.data(using: .utf8),
+                  let raw = try? liteDecoder.decode(ParsedRecordRaw.self, from: data)
+            else { continue }
+            if raw.type == .assistant,
+               let msg = raw.message,
+               msg.stopReason != nil,
+               let id = msg.id {
+                ids.insert(id)
+            }
+        }
+        return ids
+    }
+
     /// Full parse of a JSONL session file into a ParsedSession
     func parse(url: URL, sessionId: String) throws -> ParsedSession {
         guard let fileHandle = FileHandle(forReadingAtPath: url.path) else {
@@ -40,6 +71,8 @@ actor SessionParser {
         var isFirstRecord = true
         var projectId = ""
         var seenMessageIds = Set<String>()
+        let isSubagentFile = url.deletingLastPathComponent().lastPathComponent == "subagents"
+        let stopReasonMsgIds = collectStopReasonMessageIds(url: url)
 
         for line in StreamingLineReader(fileHandle: fileHandle) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -54,16 +87,19 @@ actor SessionParser {
                 continue // Skip malformed lines
             }
 
-            // Detect continuation
+            // Subagent (sidechain) files carry the parent's sessionId on every record by
+            // design, which would make the continuation parent-skip branch drop every
+            // billable turn. Detect via the per-record isSidechain flag (CLI writes this
+            // since Claude Code 2.1.81) with a path-based fallback for older records.
+            let isSidechain = record.isSidechain == true || isSubagentFile
+
             if isFirstRecord {
                 isFirstRecord = false
-                if let recSessionId = record.sessionId, recSessionId != sessionId {
+                if !isSidechain, let recSessionId = record.sessionId, recSessionId != sessionId {
                     parentSessionId = recSessionId
                 }
             }
-
-            // Skip records from parent session
-            if let parentId = parentSessionId, record.sessionId == parentId {
+            if !isSidechain, let parentId = parentSessionId, record.sessionId == parentId {
                 continue
             }
 
@@ -94,9 +130,16 @@ actor SessionParser {
             if record.type == .assistant {
                 assistantMessageCount += 1
 
-                if record.message?.stopReason != nil, let usage = record.message?.usage {
+                // Bill the record if (a) it has stop_reason (the normal final
+                // record of a completed stream) or (b) it's an orphan — its
+                // msg.id never produces a stop_reason record anywhere in the
+                // file (aborted stream, truncated transcript). msg.id dedup
+                // below ensures only the first orphan per msg.id is counted.
+                let msgId = record.message?.id
+                let isOrphan = msgId.map { !stopReasonMsgIds.contains($0) } ?? true
+                let isBillable = record.message?.stopReason != nil || isOrphan
+                if isBillable, let usage = record.message?.usage {
                     // Dedup by message id (see parseMetadata for context).
-                    let msgId = record.message?.id
                     let alreadyCounted = msgId.map { seenMessageIds.contains($0) } ?? false
                     if !alreadyCounted {
                         if let id = msgId { seenMessageIds.insert(id) }
@@ -158,6 +201,12 @@ actor SessionParser {
             projectId = pathComponents[projectsIndex + 1]
         }
 
+        if isSubagentFile {
+            // Subagent files live at .../<parentId>/subagents/<subId>.jsonl — restore the
+            // parent-session linkage that the per-record skip above intentionally suppresses.
+            parentSessionId = url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
+        }
+
         let metadata = SessionMetadata(
             firstTimestamp: firstTimestamp,
             lastTimestamp: lastTimestamp,
@@ -186,7 +235,8 @@ actor SessionParser {
             records: records,
             toolResultMap: toolResultMap,
             metadata: metadata,
-            parentSessionId: parentSessionId
+            parentSessionId: parentSessionId,
+            isSubagent: isSubagentFile
         )
     }
 
@@ -210,6 +260,8 @@ actor SessionParser {
         var localSeenMessageIds = Set<String>()
 
         let projectId = deriveProjectId(from: url)
+        let isSubagentFile = url.deletingLastPathComponent().lastPathComponent == "subagents"
+        let stopReasonMsgIds = collectStopReasonMessageIds(url: url)
         var lineCount = 0
         var totalInputTokens = 0
         var totalOutputTokens = 0
@@ -278,13 +330,15 @@ actor SessionParser {
                     lastTimestamp = ts
                 }
 
+                let isSidechain = raw.isSidechain == true || isSubagentFile
+
                 if isFirstRecord {
                     isFirstRecord = false
-                    if let recSessionId = raw.sessionId, recSessionId != sessionId {
+                    if !isSidechain, let recSessionId = raw.sessionId, recSessionId != sessionId {
                         parentSessionId = recSessionId
                     }
                 }
-                if let parentId = parentSessionId, raw.sessionId == parentId {
+                if !isSidechain, let parentId = parentSessionId, raw.sessionId == parentId {
                     continue
                 }
                 if let s = raw.slug, !s.isEmpty {
@@ -317,7 +371,15 @@ actor SessionParser {
                         }
                     }
 
-                    if raw.message?.stopReason != nil, let usage = raw.message?.usage {
+                    // Bill the record if (a) it has stop_reason (final record of a
+                    // completed stream, carrying cumulative usage) or (b) it's an
+                    // orphan — no record with this msg.id ever has stop_reason in
+                    // the file (aborted streams, truncated transcripts). msg.id
+                    // dedup below keeps each orphan to a single occurrence.
+                    let orphanMsgId = raw.message?.id
+                    let isOrphan = orphanMsgId.map { !stopReasonMsgIds.contains($0) } ?? true
+                    let isBillable = raw.message?.stopReason != nil || isOrphan
+                    if isBillable, let usage = raw.message?.usage {
                         // Primary dedup: same Anthropic message id = same billable API call.
                         if let msgId = raw.message?.id {
                             if localSeenMessageIds.contains(msgId) { continue }
@@ -517,7 +579,8 @@ actor SessionParser {
             hasError: hasError,
             modelBreakdown: modelBreakdown,
             toolCallCount: toolCallCount,
-            observability: observability
+            observability: observability,
+            isSubagent: isSubagentFile
         )
     }
 

@@ -144,11 +144,13 @@ final class SessionStore {
             }
     }
 
-    /// Recent sessions (last 3, any date)
+    /// Recent sessions (last 3, any date). Subagents are filtered out — their
+    /// UUID titles would push real top-level sessions out of the popover's list.
     var recentSessions: [SessionSummary] {
         Array(
             allSessionsWithProjects
                 .map(\.session)
+                .filter { !$0.isSubagent }
                 .sorted { $0.lastTimestamp > $1.lastTimestamp }
                 .prefix(3)
         )

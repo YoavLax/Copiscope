@@ -55,6 +55,7 @@ struct ParsedRecordRaw: Decodable, Sendable {
     // flags
     let isCompactSummary: Bool?
     let isVisibleInTranscriptOnly: Bool?
+    let isSidechain: Bool?
 
     // /rename writes type:"custom-title" / type:"agent-name" records
     // carrying these fields. Kept here so the rest of the record decodes
@@ -89,6 +90,8 @@ struct ParsedRecordRaw: Decodable, Sendable {
         toolUseResult = try container.decodeIfPresent(ToolUseResultRaw.self, forKey: .toolUseResult)
         isCompactSummary = try container.decodeIfPresent(Bool.self, forKey: .isCompactSummary)
         isVisibleInTranscriptOnly = try container.decodeIfPresent(Bool.self, forKey: .isVisibleInTranscriptOnly)
+        // Always-decoded; needed for sidechain (subagent) detection in both modes.
+        isSidechain = try container.decodeIfPresent(Bool.self, forKey: .isSidechain)
         customTitle = try container.decodeIfPresent(String.self, forKey: .customTitle)
         agentName = try container.decodeIfPresent(String.self, forKey: .agentName)
         if mode == .full {
@@ -106,7 +109,7 @@ struct ParsedRecordRaw: Decodable, Sendable {
         case type, uuid, parentUuid, timestamp, sessionId, cwd, slug
         case message, subtype, content, compactMetadata, logicalParentUuid
         case toolUseResult, isCompactSummary, isVisibleInTranscriptOnly
-        case customTitle, agentName
+        case customTitle, agentName, isSidechain
     }
 }
 

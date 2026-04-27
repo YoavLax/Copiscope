@@ -76,6 +76,7 @@ struct SessionSummary: Identifiable, Sendable {
     let modelBreakdown: [ModelTokenBreakdown]
     let toolCallCount: Int
     let observability: SessionObservability
+    let isSubagent: Bool
 }
 
 struct ModelTokenBreakdown: Sendable {

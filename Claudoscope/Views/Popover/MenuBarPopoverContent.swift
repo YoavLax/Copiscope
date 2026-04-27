@@ -37,9 +37,10 @@ struct MenuBarPopoverContent: View {
 
                 Divider()
             } else {
-                // Today's stats
+                // Today's stats. sessionCount excludes subagents to match the
+                // dashboard's session counter; token/cost include them.
                 StatsStrip(
-                    sessionCount: store.todaySessions.count,
+                    sessionCount: store.todaySessions.filter { !$0.isSubagent }.count,
                     tokenCount: store.todayTokens,
                     cost: store.todayCost,
                     projectCount: Set(store.todaySessions.map(\.projectId)).count
@@ -129,6 +130,10 @@ struct MenuBarPopoverContent: View {
         return store.allSessionsWithProjects
             .map(\.session)
             .filter { session in
+                // Hide subagents from the active card — UUID titles look broken
+                // here. The badge/icon trigger uses store.hasActiveSession which
+                // still counts subagents so the menu bar dot remains accurate.
+                guard !session.isSubagent else { return false }
                 guard let date = ISO8601.parse(session.lastTimestamp) else { return false }
                 return now.timeIntervalSince(date) < 60
             }
