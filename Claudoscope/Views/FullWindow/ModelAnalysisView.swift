@@ -80,17 +80,7 @@ private struct DailyModelCostChartView: View {
                 .opacity(hoveredDate == nil || hoveredDate == entry.date ? 1.0 : 0.4)
             }
             .chartForegroundStyleScale(domain: modelNames, range: modelNames.map { colorForModel($0) })
-            .chartXAxis {
-                AxisMarks(values: .automatic) { value in
-                    AxisValueLabel {
-                        if let str = value.as(String.self) {
-                            Text(formatChartDate(str))
-                                .font(.system(size: 11))
-                        }
-                    }
-                    AxisGridLine()
-                }
-            }
+            .stridedDateXAxis(dates: dailyModelCost.map(\.date))
             .chartYAxis {
                 AxisMarks { value in
                     AxisValueLabel {

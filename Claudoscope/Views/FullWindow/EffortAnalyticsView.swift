@@ -92,6 +92,7 @@ struct EffortAnalyticsView: View {
                                 AreaMark(x: .value("Date", day.date), y: .value("Ultra-think", day.distribution.ultrathink))
                                     .foregroundStyle(.red.opacity(0.6))
                             }
+                            .stridedDateXAxis(dates: data.effortOverTime.map(\.date))
                             .frame(height: 200)
                         }
                         .padding(.horizontal, 24)

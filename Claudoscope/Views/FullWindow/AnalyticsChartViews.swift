@@ -42,7 +42,7 @@ struct IOTokensChartView: View {
                 "Input": Color.blue.opacity(0.7),
                 "Output": Color.green.opacity(0.7),
             ])
-            .dailyChartAxes()
+            .dailyChartAxes(dates: dailyUsage.map(\.date))
             .chartLegend(position: .bottom, spacing: 16)
             .frame(height: 180)
             .chartOverlay { proxy in
@@ -98,7 +98,7 @@ struct CacheTokensChartView: View {
                 "Cache Read": Color.purple.opacity(0.5),
                 "Cache Write": Color.orange.opacity(0.6),
             ])
-            .dailyChartAxes()
+            .dailyChartAxes(dates: dailyUsage.map(\.date))
             .chartLegend(position: .bottom, spacing: 16)
             .frame(height: 180)
             .chartOverlay { proxy in
@@ -179,19 +179,9 @@ struct ChartTooltip: View {
 }
 
 extension View {
-    func dailyChartAxes() -> some View {
+    func dailyChartAxes(dates: [String]) -> some View {
         self
-            .chartXAxis {
-                AxisMarks(values: .automatic) { value in
-                    AxisValueLabel {
-                        if let str = value.as(String.self) {
-                            Text(formatChartDate(str))
-                                .font(.system(size: 11))
-                        }
-                    }
-                    AxisGridLine()
-                }
-            }
+            .stridedDateXAxis(dates: dates)
             .chartYAxis {
                 AxisMarks { value in
                     AxisValueLabel {
@@ -204,6 +194,36 @@ extension View {
                 }
             }
     }
+
+    func stridedDateXAxis(dates: [String]) -> some View {
+        self.chartXAxis {
+            AxisMarks(values: stridedDateValues(dates)) { value in
+                AxisValueLabel {
+                    if let str = value.as(String.self) {
+                        Text(formatChartDate(str))
+                            .font(.system(size: 11))
+                    }
+                }
+                AxisGridLine()
+            }
+        }
+    }
+}
+
+// Pick ~targetCount evenly spaced dates from `dates`, always keeping the last
+// one so the axis spans the full range. Returning fewer labels than data points
+// stops Swift Charts from rendering one label per category.
+func stridedDateValues(_ dates: [String], targetCount: Int = 7) -> [String] {
+    guard dates.count > targetCount else { return dates }
+    let step = max(1, Int((Double(dates.count) / Double(targetCount)).rounded()))
+    var result: [String] = []
+    for i in Swift.stride(from: 0, to: dates.count, by: step) {
+        result.append(dates[i])
+    }
+    if let last = dates.last, result.last != last {
+        result.append(last)
+    }
+    return result
 }
 
 func formatChartDate(_ dateStr: String) -> String {

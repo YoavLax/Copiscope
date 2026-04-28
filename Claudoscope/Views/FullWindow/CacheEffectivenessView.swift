@@ -165,17 +165,7 @@ private struct CacheHitRatioChartView: View {
                 }
             }
             .chartYScale(domain: 0...1)
-            .chartXAxis {
-                AxisMarks(values: .automatic) { value in
-                    AxisValueLabel {
-                        if let str = value.as(String.self) {
-                            Text(formatChartDate(str))
-                                .font(.system(size: 11))
-                        }
-                    }
-                    AxisGridLine()
-                }
-            }
+            .stridedDateXAxis(dates: dailyHitRatio.map(\.date))
             .chartYAxis {
                 AxisMarks(values: [0, 0.25, 0.5, 0.75, 1.0]) { value in
                     AxisValueLabel {
