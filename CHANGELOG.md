@@ -11,12 +11,16 @@
 - Secret scanning: new SEC010 critical-credential tier (ERROR severity) for account-level platform tokens, covering Stripe live/prod keys, Stripe webhook signing secrets, OpenAI service-account and admin keys, Anthropic admin keys, Azure storage AccountKeys, and Vault tokens. The latter four were previously WARNING under SEC007.
 
 ### Improvements
+- Cold-cache initial scan is 34.9% faster: `SessionParser` collapses the prior two-disk-pass design into a single streaming pass with in-memory replay. Measured on a 2,052-session install: 37.3s → 24.3s cold (median, n=5), ~39s → ~26s warm.
+- Analytics charts on 30-day and all-time ranges no longer render garbled X-axis labels. A new `stridedDateXAxis` modifier picks ~7 evenly spaced dates (always keeping the last) and is shared across the I/O, cache, hit-ratio, model-cost, and effort charts.
 - File watcher now treats edits under `~/.claude/themes/` as config changes, so the new Themes section live-reloads on edit.
 - SEC007 platform-token detection extended with verified vendor formats from gitleaks: GitHub OAuth/server/user/refresh tokens (gho_/ghs_/ghu_/ghr_), OpenAI project keys (sk-proj- with the T3BlbkFJ literal anchor), legacy OpenAI keys (\bsk-…{48}\b with word boundaries), SendGrid (SG.x.y), Shopify (shp[atspc]_ all four prefixes), DigitalOcean (dop_v1_), Linear (lin_api_), and PyPI (pypi-AgEIcHlwaS5vcmcC… macaroons).
 - SEC004 keyword group extended to recognize `aws_secret_access_key` and `aws_secret_key` assignments.
 - SEC007 sk-ant- alternation now uses a negative lookahead to avoid double-matching admin01 keys (which live in SEC010).
 
 ### Bug Fixes
+- Fix cost overcount on tool-heavy sessions where Claude Code re-persists the same Anthropic API response across tool-use turn boundaries. Each copy shared `message.id` but carried a unique `uuid`, so the prior uuid-only dedup missed them. Now deduped by `message.id` with uuid as fallback. One observed case: $1616 → $898 (matching the actual Anthropic bill).
+- Recover hidden cost from subagent records and aborted streams. Subagent JSONL files share the parent's `sessionId` and were being skipped by the continuation parent-skip branch (~14% of cost dropped on heavy-subagent setups); now detected via per-record `isSidechain` with a path-based fallback. Aborted streams produce orphan `message.id`s with no `stop_reason` record anywhere in the file; a first pass collects stop-reason ids, the second pass bills records carrying either `stop_reason` or an orphan id. Combined, the gap from a real Vertex bill closes from ~10% to <5%.
 - Fix existing GitHub token regex (`ghp_[A-Za-z0-9_]{36}`) which incorrectly allowed underscores in the token body. Per GitHub's published spec, token bodies are base62 only.
 
 ## [0.6.1]
