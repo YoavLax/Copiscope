@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Claudoscope",
+    name: "AgentScope",
     platforms: [
         .macOS(.v14)
     ],
@@ -11,20 +11,23 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "Claudoscope",
+            name: "AgentScope",
             dependencies: [
                 .product(name: "OrderedCollections", package: "swift-collections"),
             ],
-            path: "Claudoscope",
-            exclude: ["Info.plist", "Claudoscope.entitlements"],
+            path: "AgentScope",
+            exclude: ["Info.plist", "AgentScope.entitlements"],
             resources: [
                 .process("Resources"),
+            ],
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
             ]
         ),
         .testTarget(
-            name: "ClaudoscopeTests",
-            dependencies: ["Claudoscope"],
-            path: "ClaudoscopeTests"
+            name: "AgentScopeTests",
+            dependencies: ["AgentScope"],
+            path: "AgentScopeTests"
         ),
     ]
 )

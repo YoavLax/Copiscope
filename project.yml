@@ -1,6 +1,6 @@
-name: Claudoscope
+name: AgentScope
 options:
-  bundleIdPrefix: com.claudoscope
+  bundleIdPrefix: com.agentscope
   deploymentTarget:
     macOS: "14.0"
   xcodeVersion: "16.0"
@@ -12,59 +12,60 @@ packages:
     from: "1.1.0"
 
 targets:
-  Claudoscope:
+  AgentScope:
     type: application
     platform: macOS
     sources:
-      - path: Claudoscope
+      - path: AgentScope
         excludes:
           - Info.plist
       - path: CHANGELOG.md
         type: file
         buildPhase: resources
     info:
-      path: Claudoscope/Info.plist
+      path: AgentScope/Info.plist
       properties:
         LSUIElement: true
         CFBundleIconFile: AppIcon
-        CFBundleName: Claudoscope
+        CFBundleName: AgentScope
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
     dependencies:
       - package: swift-collections
         product: OrderedCollections
     entitlements:
-      path: Claudoscope/Claudoscope.entitlements
+      path: AgentScope/AgentScope.entitlements
       properties:
         com.apple.security.app-sandbox: false
         com.apple.security.files.user-selected.read-only: true
     settings:
       base:
-        MARKETING_VERSION: "0.6.2"
+        MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        PRODUCT_BUNDLE_IDENTIFIER: com.claudoscope.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.agentscope.app
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Developer ID Application"
         DEVELOPMENT_TEAM: "DN8M2CQ4D2"
-        PRODUCT_NAME: Claudoscope
+        PRODUCT_NAME: AgentScope
         GENERATE_INFOPLIST_FILE: false
-        INFOPLIST_FILE: Claudoscope/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Claudoscope/Claudoscope.entitlements
+        INFOPLIST_FILE: AgentScope/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AgentScope/AgentScope.entitlements
         ENABLE_HARDENED_RUNTIME: true
         OTHER_CODE_SIGN_FLAGS: "--timestamp"
+        OTHER_LDFLAGS: "-lsqlite3"
       configs:
         Release:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
 
-  ClaudoscopeTests:
+  AgentScopeTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: ClaudoscopeTests
+      - path: AgentScopeTests
     dependencies:
-      - target: Claudoscope
+      - target: AgentScope
     settings:
       base:
         SWIFT_VERSION: "5.9"
@@ -74,11 +75,11 @@ targets:
         CODE_SIGNING_REQUIRED: false
 
 schemes:
-  Claudoscope:
+  AgentScope:
     build:
       targets:
-        Claudoscope: all
-        ClaudoscopeTests: [test]
+        AgentScope: all
+        AgentScopeTests: [test]
     test:
       targets:
-        - ClaudoscopeTests
+        - AgentScopeTests
