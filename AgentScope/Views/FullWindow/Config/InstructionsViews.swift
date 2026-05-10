@@ -9,7 +9,7 @@ struct InstructionsListView: View {
     var filtered: [InstructionEntry] {
         guard !searchText.isEmpty else { return instructions }
         return instructions.filter {
-            $0.source.localizedCaseInsensitiveContains(searchText) ||
+            $0.source.label.localizedCaseInsensitiveContains(searchText) ||
             ($0.applyTo?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
     }
@@ -39,7 +39,7 @@ struct InstructionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(entry.source)
+            Text(entry.source.label)
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(1)
             if let applyTo = entry.applyTo {
@@ -56,29 +56,18 @@ struct InstructionRow: View {
 
 struct InstructionsSplitView: View {
     let instructions: [InstructionEntry]
-    @State private var searchText = ""
     @State private var selectedInstruction: InstructionEntry?
-
-    var filtered: [InstructionEntry] {
-        guard !searchText.isEmpty else { return instructions }
-        return instructions.filter {
-            $0.source.localizedCaseInsensitiveContains(searchText)
-        }
-    }
 
     var body: some View {
         HSplitView {
-            VStack(spacing: 0) {
-                ConfigSearchBar(text: $searchText, placeholder: "Filter instructions...")
-                List(filtered, selection: Binding(
-                    get: { selectedInstruction?.id },
-                    set: { id in selectedInstruction = filtered.first { $0.id == id } }
-                )) { entry in
-                    InstructionRow(entry: entry)
-                        .tag(entry.id)
-                }
+            List(instructions, selection: Binding(
+                get: { selectedInstruction?.id },
+                set: { id in selectedInstruction = instructions.first { $0.id == id } }
+            )) { entry in
+                InstructionRow(entry: entry)
+                    .tag(entry.id)
             }
-            .frame(minWidth: 250)
+            .frame(minWidth: 220)
 
             if let selected = selectedInstruction {
                 instructionDetail(selected)
@@ -96,7 +85,7 @@ struct InstructionsSplitView: View {
     func instructionDetail(_ entry: InstructionEntry) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text(entry.source)
+                Text(entry.source.label)
                     .font(.headline)
                 if let applyTo = entry.applyTo {
                     LabeledContent("Applies To", value: applyTo)

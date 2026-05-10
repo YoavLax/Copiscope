@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AgentScope}",
+            "name": "Debug AgentScope",
+            "target": "AgentScope",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug AgentScope"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AgentScope}",
+            "name": "Release AgentScope",
+            "target": "AgentScope",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release AgentScope"
+        }
+    ]
+}

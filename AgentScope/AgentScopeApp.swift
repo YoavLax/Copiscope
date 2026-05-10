@@ -33,6 +33,12 @@ struct AgentScopeApp: App {
                 OnboardingWindowController.shared.show()
             }
         }
+
+        // Open main window immediately on launch so the app is visible
+        // even if the menu bar icon is hidden by a full menu bar.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            MainWindowController.shared.open(store: store, updateService: updateService)
+        }
     }
 
     var body: some Scene {
@@ -120,23 +126,15 @@ struct MenuBarIcon: View {
     var hasUpdate: Bool = false
 
     var body: some View {
-        if let url = Bundle.main.url(forResource: "menu-bar-icon", withExtension: "png"),
-           let nsImage = NSImage(contentsOf: url) {
-            nsImage.isTemplate = false
-            return AnyView(
-                ZStack(alignment: .topTrailing) {
-                    Image(nsImage: nsImage)
-                        .renderingMode(.original)
-                    if hasUpdate {
-                        Circle()
-                            .fill(.orange)
-                            .frame(width: 6, height: 6)
-                            .offset(x: 2, y: -2)
-                    }
-                }
-            )
-        } else {
-            return AnyView(Image(systemName: "chevron.left.forwardslash.chevron.right"))
+        ZStack(alignment: .topTrailing) {
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+                .font(.system(size: 13, weight: .medium))
+            if hasUpdate {
+                Circle()
+                    .fill(.orange)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 2, y: -2)
+            }
         }
     }
 }

@@ -122,8 +122,8 @@ final class CopilotFileWatcher: @unchecked Sendable {
         let isRenamed = flags & UInt32(kFSEventStreamEventFlagItemRenamed) != 0
         let isInodeMeta = flags & UInt32(kFSEventStreamEventFlagItemInodeMetaMod) != 0
 
-        // Copilot transcript JSONL files
-        if path.hasSuffix(".jsonl") && path.contains("/transcripts/") {
+        // Copilot transcript JSONL files (both old /transcripts/ and new /chatSessions/ paths)
+        if path.hasSuffix(".jsonl") && (path.contains("/transcripts/") || path.contains("/chatSessions/")) {
             guard isCreated || isModified || isRenamed || isInodeMeta else { return }
             debounceEmit(key: path) {
                 if isCreated {

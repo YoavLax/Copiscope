@@ -48,7 +48,15 @@ struct MainPanelView: View {
                     )
                 }
             case .agents:
-                AgentsSplitView(agents: store.agents)
+                if store.agents.isEmpty {
+                    EmptyStateView(
+                        icon: "person.2",
+                        title: "No agents found",
+                        message: "No .agent.md or AGENTS.md files were detected in your VS Code workspace."
+                    )
+                } else {
+                    AgentsSplitView(agents: store.agents)
+                }
             case .timeline:
                 TimelineMainPanelView(
                     entries: store.timelineEntries,

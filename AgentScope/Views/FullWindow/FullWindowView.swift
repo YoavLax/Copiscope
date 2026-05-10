@@ -69,9 +69,9 @@ struct FullWindowView: View {
                 }
             }
         }
-        .onChange(of: selectedMemoryWorkspaceId) { _, _ in
+        .onChange(of: selectedMemoryWorkspaceId) { _, newId in
             Task {
-                await store.loadMemoryFiles()
+                await store.loadMemoryFiles(workspaceId: newId)
             }
         }
         .background {
@@ -140,7 +140,7 @@ struct FullWindowView: View {
             case .timeline:
                 await store.loadTimeline()
             case .memory:
-                await store.loadMemoryFiles()
+                await store.loadMemoryFiles(workspaceId: selectedMemoryWorkspaceId)
                 await store.loadConfig()
             case .configHealth:
                 await store.runConfigLintIfNeeded()

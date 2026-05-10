@@ -15,23 +15,46 @@ final class OtelSpanReader: Sendable {
 
     /// Fetch all chat spans for a given conversation/session ID
     func chatSpans(forSession sessionId: String) -> [OtelSpan] {
-        let sql = """
+        // Try direct column match first (old format)
+        let sqlDirect = """
             SELECT * FROM spans
             WHERE (conversation_id = ?1 OR chat_session_id = ?1)
               AND operation_name = 'chat'
             ORDER BY start_time_ms ASC
             """
-        return querySpans(sql: sql, bindings: [sessionId])
+        let direct = querySpans(sql: sqlDirect, bindings: [sessionId])
+        if !direct.isEmpty { return direct }
+
+        // Fall back: session ID stored as span attribute 'copilot_chat.parent_chat_session_id'
+        let sqlAttr = """
+            SELECT s.* FROM spans s
+            JOIN span_attributes sa ON sa.span_id = s.span_id
+            WHERE sa.key = 'copilot_chat.parent_chat_session_id'
+              AND sa.value = ?1
+              AND s.operation_name = 'chat'
+            ORDER BY s.start_time_ms ASC
+            """
+        return querySpans(sql: sqlAttr, bindings: [sessionId])
     }
 
     /// Fetch all spans (any operation) for a given conversation/session ID
     func allSpans(forSession sessionId: String) -> [OtelSpan] {
-        let sql = """
+        let sqlDirect = """
             SELECT * FROM spans
             WHERE conversation_id = ?1 OR chat_session_id = ?1
             ORDER BY start_time_ms ASC
             """
-        return querySpans(sql: sql, bindings: [sessionId])
+        let direct = querySpans(sql: sqlDirect, bindings: [sessionId])
+        if !direct.isEmpty { return direct }
+
+        let sqlAttr = """
+            SELECT s.* FROM spans s
+            JOIN span_attributes sa ON sa.span_id = s.span_id
+            WHERE sa.key = 'copilot_chat.parent_chat_session_id'
+              AND sa.value = ?1
+            ORDER BY s.start_time_ms ASC
+            """
+        return querySpans(sql: sqlAttr, bindings: [sessionId])
     }
 
     /// Fetch tool spans for a given session

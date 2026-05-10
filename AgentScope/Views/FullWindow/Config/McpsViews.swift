@@ -67,7 +67,7 @@ struct McpServerRow: View {
 
                 Spacer()
 
-                if let level = server.level {
+                if let level = server.source {
                     Text(level)
                         .font(Typography.micro)
                         .padding(.horizontal, 4)
@@ -176,7 +176,7 @@ struct McpServerCard: View {
                                 .background((server.url != nil ? Color.blue : Color.green).opacity(0.1))
                                 .clipShape(Capsule())
 
-                            if let level = server.level {
+                            if let level = server.source {
                                 Text(level)
                                     .font(.system(size: 11))
                                     .foregroundStyle(.tertiary)

@@ -26,7 +26,7 @@ struct WorkspaceScanner {
         }
 
         // Collect all JSONL entries across all workspace hashes
-        var allEntries: [(workspaceId: String, url: URL, sessionId: String)] = []
+        var allEntries: [(workspaceId: String, url: URL, sessionId: String, isChatSession: Bool)] = []
         var workspaceInfos: [String: (name: String, path: String, workspacePath: String?)] = [:]
 
         for hashDir in hashDirs {
@@ -34,14 +34,32 @@ struct WorkspaceScanner {
             var isDir: ObjCBool = false
             guard fm.fileExists(atPath: hashPath.path, isDirectory: &isDir), isDir.boolValue else { continue }
 
-            // Check for Copilot transcripts
-            let transcriptsDir = hashPath
-                .appendingPathComponent("GitHub.copilot-chat")
-                .appendingPathComponent("transcripts")
+            // Check both known session directory layouts:
+            //   - GitHub.copilot-chat/transcripts/  (older VS Code / Copilot versions)
+            //   - chatSessions/                      (newer VS Code versions)
+            // Prefer transcripts when both exist for the same session ID (richer format).
+            let transcriptsDir = hashPath.appendingPathComponent("GitHub.copilot-chat").appendingPathComponent("transcripts")
+            let chatSessionsDir = hashPath.appendingPathComponent("chatSessions")
 
-            guard let files = try? fm.contentsOfDirectory(atPath: transcriptsDir.path) else { continue }
+            var seenSessionIds = Set<String>()
+            var jsonlFiles: [(url: URL, sessionId: String, isChatSession: Bool)] = []
 
-            let jsonlFiles = files.filter { $0.hasSuffix(".jsonl") }
+            // Transcripts first (preferred format)
+            if let files = try? fm.contentsOfDirectory(atPath: transcriptsDir.path) {
+                for file in files where file.hasSuffix(".jsonl") {
+                    let sessionId = String(file.dropLast(6))
+                    seenSessionIds.insert(sessionId)
+                    jsonlFiles.append((transcriptsDir.appendingPathComponent(file), sessionId, false))
+                }
+            }
+            // chatSessions second — skip any IDs already found in transcripts
+            if let files = try? fm.contentsOfDirectory(atPath: chatSessionsDir.path) {
+                for file in files where file.hasSuffix(".jsonl") {
+                    let sessionId = String(file.dropLast(6))
+                    guard !seenSessionIds.contains(sessionId) else { continue }
+                    jsonlFiles.append((chatSessionsDir.appendingPathComponent(file), sessionId, true))
+                }
+            }
             guard !jsonlFiles.isEmpty else { continue }
 
             // Resolve workspace name from workspace.json
@@ -50,10 +68,8 @@ struct WorkspaceScanner {
 
             workspaceInfos[hashDir] = (name: workspaceName, path: hashPath.path, workspacePath: workspacePath)
 
-            for file in jsonlFiles {
-                let sessionId = String(file.dropLast(6))
-                let fileURL = transcriptsDir.appendingPathComponent(file)
-                allEntries.append((hashDir, fileURL, sessionId))
+            for entry in jsonlFiles {
+                allEntries.append((hashDir, entry.url, entry.sessionId, entry.isChatSession))
             }
         }
 
@@ -78,11 +94,20 @@ struct WorkspaceScanner {
                 }
 
                 group.addTask {
-                    let summary = try? await self.parser.parseMetadata(
-                        url: entry.url,
-                        sessionId: entry.sessionId,
-                        workspaceId: entry.workspaceId
-                    )
+                    let summary: SessionSummary?
+                    if entry.isChatSession {
+                        summary = try? await self.parser.parseMetadataChatSession(
+                            url: entry.url,
+                            sessionId: entry.sessionId,
+                            workspaceId: entry.workspaceId
+                        )
+                    } else {
+                        summary = try? await self.parser.parseMetadata(
+                            url: entry.url,
+                            sessionId: entry.sessionId,
+                            workspaceId: entry.workspaceId
+                        )
+                    }
                     return (entry.workspaceId, summary)
                 }
                 running += 1

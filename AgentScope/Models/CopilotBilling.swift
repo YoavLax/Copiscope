@@ -75,33 +75,56 @@ struct TokenPricing: Sendable {
 }
 
 struct PricingTables {
+    // All prices are per 1 million tokens in USD.
+    // Source: https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
+    // 1 AI credit = $0.01 USD; prices in the table are in AI credits per MTok = USD per MTok.
     static let byModel: [String: TokenPricing] = [
-        // Anthropic (Copilot proxied)
-        "claude-opus-4.6":   TokenPricing(input: 15,   output: 75,    cacheRead: 1.50,  cacheWrite: 18.75),
-        "claude-sonnet-4.6": TokenPricing(input: 3,    output: 15,    cacheRead: 0.30,  cacheWrite: 3.75),
-        "claude-haiku-4.5":  TokenPricing(input: 1,    output: 5,     cacheRead: 0.10,  cacheWrite: 1.25),
+        // Anthropic — Copilot-proxied IDs (e.g. "copilot/claude-sonnet-4.6")
+        "claude-opus-4.7":   TokenPricing(input: 5.00,  output: 25.00, cacheRead: 0.50,  cacheWrite: 6.25),
+        "claude-opus-4.6":   TokenPricing(input: 5.00,  output: 25.00, cacheRead: 0.50,  cacheWrite: 6.25),
+        "claude-opus-4.5":   TokenPricing(input: 5.00,  output: 25.00, cacheRead: 0.50,  cacheWrite: 6.25),
+        "claude-sonnet-4.6": TokenPricing(input: 3.00,  output: 15.00, cacheRead: 0.30,  cacheWrite: 3.75),
+        "claude-sonnet-4.5": TokenPricing(input: 3.00,  output: 15.00, cacheRead: 0.30,  cacheWrite: 3.75),
+        "claude-sonnet-4":   TokenPricing(input: 3.00,  output: 15.00, cacheRead: 0.30,  cacheWrite: 3.75),
+        "claude-haiku-4.5":  TokenPricing(input: 1.00,  output: 5.00,  cacheRead: 0.10,  cacheWrite: 1.25),
         // OpenAI
-        "gpt-4o":            TokenPricing(input: 2.50, output: 10,    cacheRead: 1.25,  cacheWrite: 0),
-        "gpt-4o-mini":       TokenPricing(input: 0.15, output: 0.60,  cacheRead: 0.075, cacheWrite: 0),
+        "gpt-5.5":           TokenPricing(input: 5.00,  output: 30.00, cacheRead: 0,     cacheWrite: 0),
+        "gpt-5.4":           TokenPricing(input: 2.50,  output: 15.00, cacheRead: 0.25,  cacheWrite: 0),
+        "gpt-5.4-mini":      TokenPricing(input: 0.75,  output: 4.50,  cacheRead: 0.075, cacheWrite: 0),
+        "gpt-5.4-nano":      TokenPricing(input: 0.20,  output: 1.25,  cacheRead: 0.02,  cacheWrite: 0),
+        "gpt-5.3-codex":     TokenPricing(input: 1.75,  output: 14.00, cacheRead: 0.175, cacheWrite: 0),
+        "gpt-5.2-codex":     TokenPricing(input: 1.75,  output: 14.00, cacheRead: 0.175, cacheWrite: 0),
+        "gpt-5.2":           TokenPricing(input: 1.75,  output: 14.00, cacheRead: 0.175, cacheWrite: 0),
+        "gpt-5-mini":        TokenPricing(input: 0.25,  output: 2.00,  cacheRead: 0.025, cacheWrite: 0),
+        "gpt-4.1":           TokenPricing(input: 2.00,  output: 8.00,  cacheRead: 0.50,  cacheWrite: 0),
+        "gpt-4o":            TokenPricing(input: 2.50,  output: 10.00, cacheRead: 1.25,  cacheWrite: 0),
+        "gpt-4o-mini":       TokenPricing(input: 0.15,  output: 0.60,  cacheRead: 0.075, cacheWrite: 0),
         // Google
-        "gemini-2.5-pro":    TokenPricing(input: 1.25, output: 10,    cacheRead: 0.315, cacheWrite: 0),
+        "gemini-3.1-pro":    TokenPricing(input: 2.00,  output: 12.00, cacheRead: 0.20,  cacheWrite: 0),
+        "gemini-3-flash":    TokenPricing(input: 0.50,  output: 3.00,  cacheRead: 0.05,  cacheWrite: 0),
+        "gemini-2.5-pro":    TokenPricing(input: 1.25,  output: 10.00, cacheRead: 0.125, cacheWrite: 0),
+        // xAI
+        "grok-code-fast-1":  TokenPricing(input: 0.20,  output: 1.50,  cacheRead: 0.02,  cacheWrite: 0),
     ]
 
     static func pricing(for model: String?) -> TokenPricing {
         guard let m = model?.lowercased() else { return .unknown }
+        // Strip "copilot/" prefix used in chatSessions modelId
+        let stripped = m.hasPrefix("copilot/") ? String(m.dropFirst(8)) : m
         // Exact match
-        if let p = byModel[m] { return p }
-        // Prefix match (e.g. "gpt-4o-mini-2024-07-18" → "gpt-4o-mini")
-        for (key, p) in byModel {
-            if m.hasPrefix(key) { return p }
-        }
-        // Family match
-        if m.contains("opus") { return byModel["claude-opus-4.6"] ?? .unknown }
-        if m.contains("sonnet") { return byModel["claude-sonnet-4.6"] ?? .unknown }
-        if m.contains("haiku") { return byModel["claude-haiku-4.5"] ?? .unknown }
-        if m.contains("4o-mini") { return byModel["gpt-4o-mini"] ?? .unknown }
-        if m.contains("4o") { return byModel["gpt-4o"] ?? .unknown }
-        if m.contains("gemini") { return byModel["gemini-2.5-pro"] ?? .unknown }
+        if let p = byModel[stripped] { return p }
+        // Prefix match (e.g. "claude-sonnet-4.6-20241022" → "claude-sonnet-4.6")
+        for (key, p) in byModel { if stripped.hasPrefix(key) || key.hasPrefix(stripped) { return p } }
+        // Family fallbacks
+        if stripped.contains("opus")   { return byModel["claude-opus-4.6"] ?? .unknown }
+        if stripped.contains("sonnet") { return byModel["claude-sonnet-4.6"] ?? .unknown }
+        if stripped.contains("haiku")  { return byModel["claude-haiku-4.5"] ?? .unknown }
+        if stripped.contains("gpt-4o-mini") { return byModel["gpt-4o-mini"] ?? .unknown }
+        if stripped.contains("gpt-4o") { return byModel["gpt-4o"] ?? .unknown }
+        if stripped.contains("gpt-4.1") { return byModel["gpt-4.1"] ?? .unknown }
+        if stripped.contains("gemini-3.1") { return byModel["gemini-3.1-pro"] ?? .unknown }
+        if stripped.contains("gemini-3") { return byModel["gemini-3-flash"] ?? .unknown }
+        if stripped.contains("gemini") { return byModel["gemini-2.5-pro"] ?? .unknown }
         return .unknown
     }
 }

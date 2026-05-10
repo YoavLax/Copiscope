@@ -57,29 +57,18 @@ struct AgentRow: View {
 
 struct AgentsSplitView: View {
     let agents: [AgentEntry]
-    @State private var searchText = ""
     @State private var selectedAgent: AgentEntry?
-
-    var filtered: [AgentEntry] {
-        guard !searchText.isEmpty else { return agents }
-        return agents.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText)
-        }
-    }
 
     var body: some View {
         HSplitView {
-            VStack(spacing: 0) {
-                ConfigSearchBar(text: $searchText, placeholder: "Filter agents...")
-                List(filtered, selection: Binding(
-                    get: { selectedAgent?.id },
-                    set: { id in selectedAgent = filtered.first { $0.id == id } }
-                )) { entry in
-                    AgentRow(entry: entry)
-                        .tag(entry.id)
-                }
+            List(agents, selection: Binding(
+                get: { selectedAgent?.id },
+                set: { id in selectedAgent = agents.first { $0.id == id } }
+            )) { entry in
+                AgentRow(entry: entry)
+                    .tag(entry.id)
             }
-            .frame(minWidth: 250)
+            .frame(minWidth: 220)
 
             if let selected = selectedAgent {
                 agentDetail(selected)

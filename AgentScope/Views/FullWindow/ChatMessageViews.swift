@@ -67,7 +67,7 @@ struct AssistantMessageView: View {
                 let result = toolResultMap[toolReq.toolCallId ?? ""]
                 ToolCallBlockView(
                     toolName: toolReq.name ?? "unknown",
-                    input: toolReq.arguments ?? [:],
+                    input: toolReq.arguments?.dictionaryValue ?? [:],
                     resultContent: result?.content,
                     isError: result?.isError ?? false,
                     searchText: searchText

@@ -44,18 +44,7 @@ struct LatencyAnalyticsView: View {
                     }
                     .padding(.horizontal, 24)
 
-                    // Compaction correlation
-                    if data.postCompactionAvgMs > 0 || data.normalAvgMs > 0 {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Compaction Impact")
-                                .font(.headline)
-                            HStack(spacing: 12) {
-                                StatCard(title: "Post-Compaction Avg", value: formatMs(data.postCompactionAvgMs))
-                                StatCard(title: "Normal Avg", value: formatMs(data.normalAvgMs))
-                            }
-                        }
-                        .padding(.horizontal, 24)
-                    }
+
 
                     // Slowest turns table
                     if !data.slowestTurns.isEmpty {
@@ -73,14 +62,6 @@ struct LatencyAnalyticsView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    if turn.isPostCompaction {
-                                        Text("post-compaction")
-                                            .font(.system(size: 10))
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(.orange.opacity(0.1))
-                                            .clipShape(Capsule())
-                                    }
                                     Text(formatMs(turn.durationMs))
                                         .font(.system(size: 13, design: .monospaced))
                                         .foregroundStyle(.red)
@@ -92,17 +73,7 @@ struct LatencyAnalyticsView: View {
                         .padding(.horizontal, 24)
                     }
 
-                    // Degrading sessions
-                    if !data.degradingSessionIds.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Degrading Sessions")
-                                .font(.headline)
-                            Text("\(data.degradingSessionIds.count) session(s) with turns exceeding 60 seconds")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 24)
-                    }
+
                 }
                 .padding(.vertical, 24)
             }

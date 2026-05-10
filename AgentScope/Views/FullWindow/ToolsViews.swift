@@ -35,7 +35,7 @@ struct ToolsSidebarContent: View {
 
     // Subagents are hidden — see SidebarView for rationale.
     private func visibleSessions(for workspace: Workspace) -> [SessionSummary] {
-        (sessionsByWorkspace[workspace.id] ?? []).filter { true }
+        sessionsByWorkspace[workspace.id] ?? []
     }
 
     private func filteredSessions(for workspace: Workspace) -> [SessionSummary] {
@@ -198,7 +198,7 @@ struct ToolsMainPanelView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     // Header
-                    Text("Tools \u{2014} Session \"\(session.slug ?? session.id)\"")
+                    Text("Tools \u{2014} Session \"\(session.id)\"")
                         .font(Typography.panelTitle)
                         .padding(.horizontal, Spacing.xl)
                         .padding(.top, Spacing.lg)
@@ -611,10 +611,12 @@ private enum ToolGrouping: String, CaseIterable {
 /// Get category color from a ToolCategory enum value (not a tool name)
 private func categoryColorForCategory(_ category: ToolCategory) -> Color {
     switch category {
-    case .read:  return Color(red: 0.52, green: 0.72, blue: 0.92)
-    case .write: return Color(red: 0.36, green: 0.79, blue: 0.65)
-    case .exec:  return Color(red: 0.83, green: 0.66, blue: 0.26)
-    case .other: return .secondary
+    case .read:   return Color(red: 0.52, green: 0.72, blue: 0.92)
+    case .write:  return Color(red: 0.36, green: 0.79, blue: 0.65)
+    case .exec:   return Color(red: 0.83, green: 0.66, blue: 0.26)
+    case .search: return Color(red: 0.68, green: 0.56, blue: 0.85)
+    case .agent:  return Color(red: 0.90, green: 0.55, blue: 0.50)
+    case .other:  return .secondary
     }
 }
 

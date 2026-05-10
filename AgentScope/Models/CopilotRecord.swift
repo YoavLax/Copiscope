@@ -46,6 +46,18 @@ struct CopilotRecord: Decodable, Sendable {
     }
 }
 
+extension CopilotRecord {
+    /// Convenience init for synthesizing records from chatSessions format.
+    init(syntheticType: CopilotRecordType, data: CopilotRecordData? = nil, timestamp: String? = nil) {
+        self.type = syntheticType
+        self.data = data
+        self.id = UUID().uuidString
+        self.timestamp = timestamp
+        self.parentId = nil
+        self.unknownTypeRaw = nil
+    }
+}
+
 // MARK: - Record Data (union of all possible data shapes)
 
 struct CopilotRecordData: Decodable, Sendable {

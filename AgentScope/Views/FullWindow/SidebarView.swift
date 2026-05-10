@@ -311,7 +311,7 @@ private struct InstructionsSidebarContent: View {
 
     var filtered: [InstructionEntry] {
         guard !filterText.isEmpty else { return instructions }
-        return instructions.filter { $0.source.localizedCaseInsensitiveContains(filterText) }
+        return instructions.filter { $0.source.label.localizedCaseInsensitiveContains(filterText) }
     }
 
     var body: some View {
@@ -321,7 +321,7 @@ private struct InstructionsSidebarContent: View {
                     Image(systemName: "doc.text")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    Text(entry.source)
+                    Text(entry.source.label)
                         .font(Typography.body)
                         .lineLimit(1)
                 }
