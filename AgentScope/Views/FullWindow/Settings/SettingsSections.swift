@@ -191,6 +191,271 @@ extension SettingsMainPanelView {
             UpdatesSectionContent()
         }
     }
+
+    // MARK: - Environment Section
+
+    @ViewBuilder
+    func environmentSection() -> some View {
+        let s = store.vscodeSettings
+        settingsSection(id: "environment", icon: "info.circle", title: "Environment") {
+            VStack(spacing: 0) {
+                settingsRow("VS Code", value: s.vscodeVersion ?? "Unknown")
+                Divider().padding(.horizontal, 12)
+                settingsRow("Copilot Extension", value: s.copilotVersion ?? "Unknown")
+            }
+            .background(.bar)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Model Section
+
+    @ViewBuilder
+    func modelSection() -> some View {
+        let s = store.vscodeSettings
+        settingsSection(id: "model", icon: "cpu", title: "Model") {
+            VStack(spacing: 0) {
+                settingsRow("Completion Model", value: s.selectedCompletionModel ?? "Default")
+                if !s.enabledLanguages.isEmpty {
+                    Divider().padding(.horizontal, 12)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Enabled by Language")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 8)
+                        FlowTagsView(items: s.enabledLanguages.sorted { $0.key < $1.key }.map { (lang, enabled) in
+                            ("\(lang): \(enabled ? "✓" : "✗")", enabled ? Color.green : Color.red)
+                        })
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                    }
+                }
+            }
+            .background(.bar)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Completions Section
+
+    @ViewBuilder
+    func completionsSection() -> some View {
+        let s = store.vscodeSettings
+        settingsSection(id: "completions", icon: "text.badge.checkmark", title: "Completions") {
+            VStack(spacing: 0) {
+                settingsBoolRow("Next Edit Suggestions", value: s.nextEditSuggestionsEnabled)
+            }
+            .background(.bar)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Chat Section
+
+    @ViewBuilder
+    func chatSection() -> some View {
+        let s = store.vscodeSettings
+        settingsSection(id: "chat", icon: "bubble.left.and.bubble.right", title: "Chat") {
+            VStack(spacing: 0) {
+                if let max = s.maxRequests {
+                    settingsRow("Max Agent Requests", value: "\(max)")
+                    Divider().padding(.horizontal, 12)
+                }
+                settingsBoolRow("Copilot Memory", value: s.memoryEnabled)
+                Divider().padding(.horizontal, 12)
+                settingsBoolRow("Nested Agents (*.md)", value: s.nestedAgentsMd)
+                Divider().padding(.horizontal, 12)
+                settingsBoolRow("Show Org & Enterprise Agents", value: s.showOrgAgents)
+                if let orient = s.viewSessionsOrientation {
+                    Divider().padding(.horizontal, 12)
+                    settingsRow("Session View", value: orient)
+                }
+            }
+            .background(.bar)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Observability Section
+
+    @ViewBuilder
+    func observabilitySection() -> some View {
+        let s = store.vscodeSettings
+        settingsSection(id: "observability", icon: "waveform", title: "Observability") {
+            VStack(spacing: 0) {
+                settingsBoolRow("OTEL Enabled", value: s.otelEnabled)
+                if let endpoint = s.otelEndpoint, !endpoint.isEmpty {
+                    Divider().padding(.horizontal, 12)
+                    settingsRow("OTEL Endpoint", value: endpoint)
+                }
+                if let type_ = s.otelExporterType {
+                    Divider().padding(.horizontal, 12)
+                    settingsRow("Exporter Type", value: type_)
+                }
+                Divider().padding(.horizontal, 12)
+                settingsBoolRow("Capture Content", value: s.otelCaptureContent)
+                Divider().padding(.horizontal, 12)
+                settingsBoolRow("DB Span Exporter", value: s.otelDbExporterEnabled)
+                Divider().padding(.horizontal, 12)
+                settingsBoolRow("Agent Debug Log", value: s.agentDebugLogEnabled)
+            }
+            .background(.bar)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Marketplaces Section
+
+    @ViewBuilder
+    func marketplacesSection() -> some View {
+        let s = store.vscodeSettings
+        settingsSection(id: "marketplaces", icon: "storefront", title: "Marketplaces") {
+            VStack(alignment: .leading, spacing: 8) {
+                settingsBoolRow("MCP Gallery", value: s.mcpGalleryEnabled)
+                    .background(.bar)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+
+                if !s.pluginMarketplaces.isEmpty {
+                    Text("Plugin Marketplaces")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    VStack(spacing: 0) {
+                        ForEach(Array(s.pluginMarketplaces.enumerated()), id: \.offset) { i, mkt in
+                            if i > 0 { Divider().padding(.horizontal, 12) }
+                            HStack {
+                                Image(systemName: "storefront")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 16)
+                                Text(mkt)
+                                    .font(Typography.code)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                        }
+                    }
+                    .background(.bar)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+                }
+
+                if !s.mcpServerSampling.isEmpty {
+                    Text("MCP Server Sampling")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    VStack(spacing: 0) {
+                        ForEach(Array(s.mcpServerSampling.sorted { $0.key < $1.key }.enumerated()), id: \.offset) { i, pair in
+                            if i > 0 { Divider().padding(.horizontal, 12) }
+                            settingsBoolRow(pair.key, value: pair.value)
+                        }
+                    }
+                    .background(.bar)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Hooks Section
+
+    @ViewBuilder
+    func hooksSection() -> some View {
+        let s = store.vscodeSettings
+        settingsSection(id: "hooks", icon: "arrow.triangle.branch", title: "Hooks") {
+            if s.hookFileLocations.isEmpty {
+                settingsEmptyHint("No hook file locations configured.")
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(s.hookFileLocations.sorted { $0.key < $1.key }.enumerated()), id: \.offset) { i, pair in
+                        if i > 0 { Divider().padding(.horizontal, 12) }
+                        HStack {
+                            Image(systemName: pair.value ? "checkmark.circle.fill" : "xmark.circle")
+                                .font(.system(size: 13))
+                                .foregroundStyle(pair.value ? .green : .secondary)
+                            Text(pair.key)
+                                .font(Typography.code)
+                            Spacer()
+                            Text(pair.value ? "enabled" : "disabled")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                    }
+                }
+                .background(.bar)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+        }
+    }
+
+    // MARK: - Shared row helpers
+
+    @ViewBuilder
+    func settingsRow(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(Typography.body)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+    }
+
+    @ViewBuilder
+    func settingsBoolRow(_ label: String, value: Bool?) -> some View {
+        HStack {
+            Text(label)
+                .font(Typography.body)
+                .foregroundStyle(.secondary)
+            Spacer()
+            if let value {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(value ? Color.green : Color.secondary.opacity(0.4))
+                        .frame(width: 8, height: 8)
+                    Text(value ? "enabled" : "disabled")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(value ? .green : .secondary)
+                }
+            } else {
+                Text("not set")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+    }
 }
 
 // MARK: - Updates Section Content

@@ -50,6 +50,7 @@ final class SessionStore {
     var prompts: [PromptEntry] = []
     var mcpServers: [McpServerEntry] = []
     var memoryFiles: [MemoryFile] = []
+    var vscodeSettings: VSCodeSettings = .empty
     var configLoading: Bool = false
 
     // Observability data
@@ -620,6 +621,8 @@ final class SessionStore {
         var prompts: [PromptEntry] = []
         var mcpServers: [McpServerEntry] = []
 
+        // --- Load VS Code settings ---
+        vscodeSettings = loadVSCodeSettings()
         // --- User-level prompts directory ---
         let userPromptsDir = vscodeUserDir.appendingPathComponent("prompts")
         if let files = try? fm.contentsOfDirectory(atPath: userPromptsDir.path) {
@@ -729,6 +732,58 @@ final class SessionStore {
             return String(folder.dropFirst(7))
         }
         return URL(fileURLWithPath: folder).path
+    }
+
+    /// Load and parse the VS Code user settings.json into a structured model.
+    private func loadVSCodeSettings() -> VSCodeSettings {
+        var s = VSCodeSettings()
+
+        // VS Code version from app bundle
+        let productJson = "/Applications/Visual Studio Code.app/Contents/Resources/app/package.json"
+        if let data = FileManager.default.contents(atPath: productJson),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            s.vscodeVersion = json["version"] as? String
+        }
+        // Copilot extension version
+        let copilotPkg = "/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/copilot/package.json"
+        if let data = FileManager.default.contents(atPath: copilotPkg),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            s.copilotVersion = json["version"] as? String
+        }
+
+        // Parse settings.json
+        let settingsPath = vscodeUserDir.appendingPathComponent("settings.json")
+        guard let data = FileManager.default.contents(atPath: settingsPath.path),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return s
+        }
+
+        s.selectedCompletionModel = json["github.copilot.selectedCompletionModel"] as? String
+        s.enabledLanguages = json["github.copilot.enable"] as? [String: Bool] ?? [:]
+        s.nextEditSuggestionsEnabled = json["github.copilot.nextEditSuggestions.enabled"] as? Bool
+        s.maxRequests = json["chat.agent.maxRequests"] as? Int
+        s.memoryEnabled = json["github.copilot.chat.copilotMemory.enabled"] as? Bool
+        s.nestedAgentsMd = json["chat.useNestedAgentsMdFiles"] as? Bool
+        s.showOrgAgents = json["github.copilot.chat.customAgents.showOrganizationAndEnterpriseAgents"] as? Bool
+        s.viewSessionsOrientation = json["chat.viewSessions.orientation"] as? String
+        if let instrs = json["github.copilot.chat.codeGeneration.instructions"] as? [String] {
+            s.codeGenerationInstructions = instrs
+        }
+        s.otelEnabled = json["github.copilot.chat.otel.enabled"] as? Bool
+        s.otelExporterType = json["github.copilot.chat.otel.exporterType"] as? String
+        s.otelEndpoint = json["github.copilot.chat.otel.otlpEndpoint"] as? String
+        s.otelCaptureContent = json["github.copilot.chat.otel.captureContent"] as? Bool
+        s.otelDbExporterEnabled = json["github.copilot.chat.otel.dbSpanExporter.enabled"] as? Bool
+        s.agentDebugLogEnabled = json["github.copilot.chat.agentDebugLog.fileLogging.enabled"] as? Bool
+        s.pluginMarketplaces = json["chat.plugins.marketplaces"] as? [String] ?? []
+        s.mcpGalleryEnabled = json["chat.mcp.gallery.enabled"] as? Bool
+        s.hookFileLocations = json["chat.hookFilesLocations"] as? [String: Bool] ?? [:]
+        if let sampling = json["chat.mcp.serverSampling"] as? [String: Any] {
+            s.mcpServerSampling = sampling.compactMapValues {
+                ($0 as? [String: Any])?["allowedDuringChat"] as? Bool
+            }
+        }
+        return s
     }
 
     /// Recursively walk a workspace directory and collect config files.

@@ -74,3 +74,46 @@ struct MemoryFile: Identifiable, Sendable {
     let content: String?
     let sizeBytes: Int?
 }
+
+// MARK: - VS Code Settings Model
+
+struct VSCodeSettings: Sendable {
+    // Environment
+    var vscodeVersion: String?
+    var copilotVersion: String?
+
+    // Model
+    var selectedCompletionModel: String?
+    var enabledLanguages: [String: Bool] = [:]  // github.copilot.enable
+
+    // Chat
+    var maxRequests: Int?
+    var memoryEnabled: Bool?
+    var nestedAgentsMd: Bool?
+    var showOrgAgents: Bool?
+    var viewSessionsOrientation: String?
+    var codeGenerationInstructions: [String] = []
+
+    // Completions
+    var nextEditSuggestionsEnabled: Bool?
+
+    // Observability
+    var otelEnabled: Bool?
+    var otelExporterType: String?
+    var otelEndpoint: String?
+    var otelCaptureContent: Bool?
+    var otelDbExporterEnabled: Bool?
+    var agentDebugLogEnabled: Bool?
+
+    // Marketplaces / plugins
+    var pluginMarketplaces: [String] = []
+    var mcpGalleryEnabled: Bool?
+
+    // Hooks
+    var hookFileLocations: [String: Bool] = [:]
+
+    // MCP sampling
+    var mcpServerSampling: [String: Bool] = [:]  // server name → allowedDuringChat
+
+    static let empty = VSCodeSettings()
+}

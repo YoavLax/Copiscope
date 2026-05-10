@@ -98,3 +98,24 @@ struct FlowLayout: Layout {
         )
     }
 }
+
+// MARK: - Colored Tag Flow View
+
+struct FlowTagsView: View {
+    let items: [(String, Color)]
+
+    var body: some View {
+        FlowLayout(spacing: 6) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                Text(item.0)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(item.1)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(item.1.opacity(0.12))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(item.1.opacity(0.3), lineWidth: 1))
+            }
+        }
+    }
+}

@@ -8,6 +8,13 @@ struct SettingsSidebarContent: View {
 
     private static let sections: [(id: String, icon: String, label: String)] = [
         ("appearance", "paintbrush", "Appearance"),
+        ("environment", "info.circle", "Environment"),
+        ("model", "cpu", "Model"),
+        ("completions", "text.badge.checkmark", "Completions"),
+        ("chat", "bubble.left.and.bubble.right", "Chat"),
+        ("observability", "waveform", "Observability"),
+        ("marketplaces", "storefront", "Marketplaces"),
+        ("hooks", "arrow.triangle.branch", "Hooks"),
         ("pricing", "dollarsign.circle", "Pricing"),
         ("updates", "arrow.triangle.2.circlepath", "Updates"),
     ]

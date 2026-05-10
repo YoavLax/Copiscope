@@ -334,6 +334,8 @@ extension SessionParser {
         var lastTimestamp = ""
         var primaryModel: String? = nil
         var hasError = false
+        var totalOutputTokens = 0
+        var modelTokenMap: [String: Int] = [:]  // modelId → sum of completionTokens
 
         for (i, req) in requests.enumerated() {
             // Timestamp (milliseconds epoch → ISO8601 string)
@@ -358,7 +360,19 @@ extension SessionParser {
             }
 
             // Model
-            if primaryModel == nil, let m = req["modelId"] as? String { primaryModel = m }
+            if let m = req["modelId"] as? String {
+                if primaryModel == nil { primaryModel = m }
+                // completionTokens from chatSession = output tokens per request
+                let ct = (req["completionTokens"] as? Int) ?? 0
+                if ct > 0 {
+                    totalOutputTokens += ct
+                    modelTokenMap[m, default: 0] += ct
+                }
+            } else {
+                // fallback for requests without modelId
+                let ct = (req["completionTokens"] as? Int) ?? 0
+                totalOutputTokens += ct
+            }
 
             // Count as a turn (each request = one user+assistant exchange)
             turnCount += 1
@@ -391,6 +405,19 @@ extension SessionParser {
 
         if title.isEmpty { title = "Session \(sessionId.prefix(8))" }
 
+        // Build per-model breakdown from completionTokens and estimate cost
+        let modelBreakdown: [ModelUsageBreakdown] = modelTokenMap.map { model, outToks in
+            let cost = estimateCostFromTokens(model: model, inputTokens: 0, outputTokens: outToks, cachedTokens: 0)
+            return ModelUsageBreakdown(
+                model: model, vendor: "github",
+                inputTokens: 0, outputTokens: outToks,
+                cachedTokens: 0, reasoningTokens: 0,
+                estimatedCost: cost,
+                requestCount: 0, multiplierCost: 0, turnCount: 0
+            )
+        }
+        let estimatedCost = modelBreakdown.reduce(0) { $0 + $1.estimatedCost }
+
         return SessionSummary(
             id: sessionId,
             workspaceId: workspaceId,
@@ -405,13 +432,13 @@ extension SessionParser {
             hasError: hasError,
             observability: .empty,
             totalInputTokens: 0,
-            totalOutputTokens: 0,
+            totalOutputTokens: totalOutputTokens,
             totalCachedTokens: 0,
             totalReasoningTokens: 0,
-            estimatedCost: 0,
-            premiumRequestCount: 0,
+            estimatedCost: estimatedCost,
+            premiumRequestCount: turnCount,
             totalMultiplierCost: 0,
-            modelBreakdown: []
+            modelBreakdown: modelBreakdown
         )
     }
 
