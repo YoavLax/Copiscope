@@ -169,6 +169,8 @@ All `.prompt.md` reusable prompt files discovered in your workspace. Selecting a
 
 ### MCPs
 
+![MCPs](screenshots/mcps.png)
+
 All configured MCP (Model Context Protocol) servers from your Copilot settings, with server name, command, arguments, and environment variables.
 
 ### Memory
@@ -176,6 +178,8 @@ All configured MCP (Model Context Protocol) servers from your Copilot settings, 
 Copilot memory and context files, including auto-memory and scoped context files. Selecting a file renders its markdown content.
 
 ### Config Health
+
+![Config Health](screenshots/health.png)
 
 Runs lint checks across your Copilot configuration, sessions, and security posture.
 
