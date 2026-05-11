@@ -880,9 +880,56 @@ final class SessionStore {
 
     func runConfigLint() async {
         lintLoading = true
-        // TODO: Implement config linting for Copilot configuration
+        lintResultsValid = false
+
+        // Ensure config files are loaded
+        if instructions.isEmpty && agents.isEmpty && prompts.isEmpty {
+            await loadConfig()
+        }
+
+        // Build the flat session list
+        let sessions: [(workspaceId: String, summary: SessionSummary)] = sessionsByWorkspace.flatMap { wsId, summaries in
+            summaries.map { (workspaceId: wsId, summary: $0) }
+        }
+
+        // Collect chatSessions directories for secret scanning
+        let wsStorageDir = vscodeUserDir.appendingPathComponent("workspaceStorage")
+        var chatSessionDirs: [(workspaceId: String, url: URL)] = []
+        if let hashDirs = try? FileManager.default.contentsOfDirectory(atPath: wsStorageDir.path) {
+            for hashDir in hashDirs {
+                let hashPath = wsStorageDir.appendingPathComponent(hashDir)
+                let csDir = hashPath.appendingPathComponent("chatSessions")
+                if FileManager.default.fileExists(atPath: csDir.path) {
+                    chatSessionDirs.append((workspaceId: hashDir, url: csDir))
+                }
+            }
+        }
+
+        let input = ConfigLinterService.Input(
+            sessions: sessions,
+            instructions: instructions,
+            agents: agents,
+            prompts: prompts,
+            mcpServers: mcpServers,
+            chatSessionDirs: chatSessionDirs
+        )
+
+        // Run the main (fast) lint pass
+        let fastResults = await linterService.lint(input)
+        lintResults = fastResults.sorted { $0.severity < $1.severity }
+        lintSummary = LintSummary.from(results: lintResults)
         lintLoading = false
         lintResultsValid = true
+
+        // Run secret scan in background (slow — reads every JSONL file)
+        secretScanLoading = true
+        let sessionMap: [(workspaceId: String, summary: SessionSummary)] = sessions
+        let secretResults = await linterService.secretScan(dirs: chatSessionDirs, sessions: sessionMap)
+        if !secretResults.isEmpty {
+            lintResults = (fastResults + secretResults).sorted { $0.severity < $1.severity }
+            lintSummary = LintSummary.from(results: lintResults)
+        }
+        secretScanLoading = false
     }
 
     // MARK: - Agent Tree
