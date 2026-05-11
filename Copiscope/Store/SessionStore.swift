@@ -114,6 +114,9 @@ final class SessionStore {
     private let watcher: CopilotFileWatcher
     private let linterService = ConfigLinterService()
     private var cancellables = Set<AnyCancellable>()
+    /// Session IDs touched by the file watcher since the last OTEL DB update.
+    /// Used to re-enrich sessions after OTEL spans are written (which lags the JSONL write).
+    private var pendingOtelEnrichment: Set<String> = []
 
     /// All sessions flattened with their workspace
     var allSessionsWithWorkspaces: [(session: SessionSummary, workspace: Workspace)] {
@@ -352,6 +355,8 @@ final class SessionStore {
             }
 
             self.lintResultsValid = false
+            // Mark this session as needing OTEL re-enrichment once the DB catches up
+            pendingOtelEnrichment.insert(sessionId)
 
         case .configChanged:
             break
@@ -360,9 +365,56 @@ final class SessionStore {
             // If the reader wasn't initialized (DB didn't exist at launch), try now
             if otelReader == nil, FileManager.default.fileExists(atPath: otelDbPath) {
                 otelReader = OtelSpanReader(dbPath: otelDbPath)
-                // Re-enrich all sessions with the newly available OTEL data
                 rescanAllSessions()
+                return
             }
+            // Re-enrich any sessions whose JSONL was updated since the last DB write.
+            // This closes the race condition where the JSONL is written before the OTEL span.
+            guard let reader = otelReader, !pendingOtelEnrichment.isEmpty else { return }
+            let ids = pendingOtelEnrichment
+            pendingOtelEnrichment.removeAll()
+            for sessionId in ids {
+                let tokenData = reader.tokenData(forSession: sessionId)
+                guard tokenData.chatSpanCount > 0 else { continue }
+                for (wsId, var sessions) in sessionsByWorkspace {
+                    guard let idx = sessions.firstIndex(where: { $0.id == sessionId }) else { continue }
+                    let existing = sessions[idx]
+                    let breakdown = tokenData.spanBreakdown.map { b in
+                        ModelUsageBreakdown(
+                            model: b.model, vendor: b.vendor,
+                            inputTokens: b.inputTokens, outputTokens: b.outputTokens,
+                            cachedTokens: b.cachedTokens, reasoningTokens: b.reasoningTokens,
+                            estimatedCost: estimateCostFromTokens(
+                                model: b.model, inputTokens: b.inputTokens,
+                                outputTokens: b.outputTokens, cachedTokens: b.cachedTokens
+                            ),
+                            requestCount: b.spanCount, multiplierCost: 0, turnCount: b.spanCount
+                        )
+                    }
+                    let totalCost = breakdown.reduce(0) { $0 + $1.estimatedCost }
+                    let primaryModel = tokenData.spanBreakdown.max(by: { $0.spanCount < $1.spanCount })?.model
+                    sessions[idx] = SessionSummary(
+                        id: existing.id, workspaceId: existing.workspaceId, title: existing.title,
+                        firstTimestamp: existing.firstTimestamp, lastTimestamp: existing.lastTimestamp,
+                        messageCount: existing.messageCount,
+                        primaryModel: primaryModel ?? existing.primaryModel,
+                        vendor: tokenData.providers.first,
+                        turnCount: existing.turnCount, toolCallCount: existing.toolCallCount,
+                        hasError: existing.hasError, observability: existing.observability,
+                        totalInputTokens: tokenData.totalInputTokens,
+                        totalOutputTokens: tokenData.totalOutputTokens,
+                        totalCachedTokens: tokenData.totalCachedTokens,
+                        totalReasoningTokens: tokenData.totalReasoningTokens,
+                        estimatedCost: totalCost,
+                        premiumRequestCount: tokenData.chatSpanCount,
+                        totalMultiplierCost: 0,
+                        modelBreakdown: breakdown
+                    )
+                    sessionsByWorkspace[wsId] = sessions
+                    break
+                }
+            }
+            recomputeAnalytics()
 
         case .mustRescan:
             rescanAllSessions()
@@ -415,8 +467,11 @@ final class SessionStore {
         for workspace in workspaces {
             let sessions = sessionsByWorkspace[workspace.id] ?? []
             for session in sessions {
-                let date = isoFull.date(from: session.firstTimestamp)
-                    ?? isoBasic.date(from: session.firstTimestamp)
+                // Filter by lastTimestamp — a session should appear in the range when it was
+                // last active, not when it was first created. This prevents long-running sessions
+                // (started > 30 days ago but still active) from being dropped from the 30-day view.
+                let date = isoFull.date(from: session.lastTimestamp)
+                    ?? isoBasic.date(from: session.lastTimestamp)
 
                 // Time-range filter
                 if let from = fromDate, let d = date, d < from { continue }
@@ -429,7 +484,8 @@ final class SessionStore {
                 totalCachedTokens += session.totalCachedTokens
                 totalCost += session.estimatedCost
 
-                // Daily aggregation
+                // Daily aggregation — bucket by lastTimestamp so the bar chart shows
+                // when work actually happened, not just session creation date
                 let dayKey = date.map { dayFormatter.string(from: $0) } ?? "Unknown"
                 if dailyMap[dayKey] == nil {
                     dailyMap[dayKey] = DailyUsage(
