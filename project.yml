@@ -1,6 +1,6 @@
-name: AgentScope
+name: Copiscope
 options:
-  bundleIdPrefix: com.agentscope
+  bundleIdPrefix: com.copiscope
   deploymentTarget:
     macOS: "14.0"
   xcodeVersion: "16.0"
@@ -12,29 +12,29 @@ packages:
     from: "1.1.0"
 
 targets:
-  AgentScope:
+  Copiscope:
     type: application
     platform: macOS
     sources:
-      - path: AgentScope
+      - path: Copiscope
         excludes:
           - Info.plist
       - path: CHANGELOG.md
         type: file
         buildPhase: resources
     info:
-      path: AgentScope/Info.plist
+      path: Copiscope/Info.plist
       properties:
         LSUIElement: true
         CFBundleIconFile: AppIcon
-        CFBundleName: AgentScope
+        CFBundleName: Copiscope
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
     dependencies:
       - package: swift-collections
         product: OrderedCollections
     entitlements:
-      path: AgentScope/AgentScope.entitlements
+      path: Copiscope/Copiscope.entitlements
       properties:
         com.apple.security.app-sandbox: false
         com.apple.security.files.user-selected.read-only: true
@@ -44,14 +44,14 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        PRODUCT_BUNDLE_IDENTIFIER: com.agentscope.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.copiscope.app
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Developer ID Application"
         DEVELOPMENT_TEAM: "DN8M2CQ4D2"
-        PRODUCT_NAME: AgentScope
+        PRODUCT_NAME: Copiscope
         GENERATE_INFOPLIST_FILE: false
-        INFOPLIST_FILE: AgentScope/Info.plist
-        CODE_SIGN_ENTITLEMENTS: AgentScope/AgentScope.entitlements
+        INFOPLIST_FILE: Copiscope/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Copiscope/Copiscope.entitlements
         ENABLE_HARDENED_RUNTIME: true
         OTHER_CODE_SIGN_FLAGS: "--timestamp"
         OTHER_LDFLAGS: "-lsqlite3"
@@ -59,13 +59,13 @@ targets:
         Release:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: false
 
-  AgentScopeTests:
+  CopIscopeTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: AgentScopeTests
+      - path: CopIscopeTests
     dependencies:
-      - target: AgentScope
+      - target: Copiscope
     settings:
       base:
         SWIFT_VERSION: "5.9"
@@ -75,11 +75,11 @@ targets:
         CODE_SIGNING_REQUIRED: false
 
 schemes:
-  AgentScope:
+  Copiscope:
     build:
       targets:
-        AgentScope: all
-        AgentScopeTests: [test]
+        Copiscope: all
+        CopIscopeTests: [test]
     test:
       targets:
-        - AgentScopeTests
+        - CopIscopeTests

@@ -22,7 +22,7 @@ final class OnboardingWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Welcome to AgentScope"
+        window.title = "Welcome to Copiscope"
         window.contentView = hostingView
         window.isReleasedWhenClosed = false
         window.level = .floating
@@ -66,7 +66,7 @@ struct OnboardingView: View {
                     .frame(width: 56, height: 56)
             }
 
-            Text("AgentScope lives in your menu bar")
+            Text("Copiscope lives in your menu bar")
                 .font(.system(size: 16, weight: .semibold))
 
             // Menu bar icon illustration

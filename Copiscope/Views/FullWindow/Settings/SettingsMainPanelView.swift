@@ -25,7 +25,7 @@ struct SettingsMainPanelView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("AgentScope preferences")
+                    Text("Copiscope preferences")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }

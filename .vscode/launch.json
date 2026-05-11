@@ -4,21 +4,41 @@
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:AgentScope}",
-            "name": "Debug AgentScope",
-            "target": "AgentScope",
+            "cwd": "${workspaceFolder:Copiscope}",
+            "name": "Debug Copiscope",
+            "target": "Copiscope",
             "configuration": "debug",
-            "preLaunchTask": "swift: Build Debug AgentScope"
+            "preLaunchTask": "swift: Build Debug Copiscope"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:AgentScope}",
-            "name": "Release AgentScope",
-            "target": "AgentScope",
+            "cwd": "${workspaceFolder:Copiscope}",
+            "name": "Release Copiscope",
+            "target": "Copiscope",
             "configuration": "release",
-            "preLaunchTask": "swift: Build Release AgentScope"
+            "preLaunchTask": "swift: Build Release Copiscope"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Copiscope}",
+            "name": "Debug Copiscope",
+            "target": "Copiscope",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Copiscope"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Copiscope}",
+            "name": "Release Copiscope",
+            "target": "Copiscope",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Copiscope"
         }
     ]
 }

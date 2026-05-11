@@ -102,7 +102,7 @@ extension SettingsMainPanelView {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show in Dock")
                         .font(.system(size: 13))
-                    Text("Keep the AgentScope icon in the Dock, even when the window is closed.")
+                    Text("Keep the Copiscope icon in the Dock, even when the window is closed.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }

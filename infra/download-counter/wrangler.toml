@@ -1,9 +1,9 @@
-name = "claudoscope-download-counter"
+name = "copiscope-download-counter"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
 [[routes]]
-pattern = "dl.claudoscope.com"
+pattern = "dl.copiscope.app"
 custom_domain = true
 
 [[kv_namespaces]]

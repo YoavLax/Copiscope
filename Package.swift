@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "AgentScope",
+    name: "Copiscope",
     platforms: [
         .macOS(.v14)
     ],
@@ -11,12 +11,12 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "AgentScope",
+            name: "Copiscope",
             dependencies: [
                 .product(name: "OrderedCollections", package: "swift-collections"),
             ],
-            path: "AgentScope",
-            exclude: ["Info.plist", "AgentScope.entitlements"],
+            path: "Copiscope",
+            exclude: ["Info.plist", "Copiscope.entitlements"],
             resources: [
                 .process("Resources"),
             ],
@@ -25,9 +25,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "AgentScopeTests",
-            dependencies: ["AgentScope"],
-            path: "AgentScopeTests"
+            name: "CopIscopeTests",
+            dependencies: ["Copiscope"],
+            path: "CopIscopeTests"
         ),
     ]
 )

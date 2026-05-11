@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct AgentScopeApp: App {
+struct CopIscopeApp: App {
     @State private var store: SessionStore
     @State private var updateService: UpdateService
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
@@ -70,7 +70,7 @@ struct AgentScopeApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 400, height: 450)
 
-        Window("AgentScope Updated", id: "whats-new") {
+        Window("Copiscope Updated", id: "whats-new") {
             WhatsNewWindowContent()
                 .environment(updateService)
         }

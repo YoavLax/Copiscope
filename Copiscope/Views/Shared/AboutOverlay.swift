@@ -35,7 +35,7 @@ struct AboutOverlay: View {
                         .frame(width: 56, height: 56)
                 }
 
-                Text("AgentScope")
+                Text("Copiscope")
                     .font(.system(size: 16, weight: .medium))
 
                 Text("Session explorer for GitHub Copilot")
@@ -47,11 +47,11 @@ struct AboutOverlay: View {
                     .foregroundStyle(.tertiary)
 
                 VStack(spacing: 6) {
-                    Link(destination: URL(string: "https://github.com/agentscope/AgentScope")!) {
+                    Link(destination: URL(string: "https://github.com/YoavLax/Copiscope")!) {
                         HStack(spacing: 4) {
                             Image(systemName: "globe")
                                 .font(.system(size: 11))
-                            Text("agentscope.app")
+                            Text("copiscope.app")
                                 .font(.system(size: 12))
                         }
                         .foregroundStyle(.blue)
@@ -60,7 +60,7 @@ struct AboutOverlay: View {
                         if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
                     }
 
-                    Link(destination: URL(string: "https://github.com/agentscope/AgentScope")!) {
+                    Link(destination: URL(string: "https://github.com/YoavLax/Copiscope")!) {
                         HStack(spacing: 4) {
                             Image(systemName: "curlybraces")
                                 .font(.system(size: 11))

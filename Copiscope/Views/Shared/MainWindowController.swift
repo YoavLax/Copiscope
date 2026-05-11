@@ -53,11 +53,11 @@ final class PersistentWindow: NSWindow {
             backing: .buffered,
             defer: false
         )
-        window.title = "AgentScope"
+        window.title = "Copiscope"
         window.contentView = hostingView
         window.isReleasedWhenClosed = false
         window.center()
-        window.setFrameAutosaveName("AgentScopeMainWindow")
+        window.setFrameAutosaveName("CopIscopeMainWindow")
         window.appearance = store.appearance.nsAppearance
 
         self.window = window

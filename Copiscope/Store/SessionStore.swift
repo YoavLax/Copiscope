@@ -224,7 +224,7 @@ final class SessionStore {
             .store(in: &cancellables)
 
         if !watcher.start() {
-            NSLog("[AgentScope] File watcher failed to start.")
+            NSLog("[Copiscope] File watcher failed to start.")
         }
     }
 
@@ -345,7 +345,7 @@ final class SessionStore {
                 self.checkActiveSession()
                 self.recomputeAnalytics()
             } catch {
-                NSLog("[AgentScope] Watcher: failed to parse session %@: %@",
+                NSLog("[Copiscope] Watcher: failed to parse session %@: %@",
                       sessionId, error.localizedDescription)
             }
 
@@ -548,7 +548,7 @@ final class SessionStore {
             await cache.set(id, value: parsed)
             self.selectedSession = parsed
         } catch {
-            NSLog("[AgentScope] Failed to load session %@: %@", id, error.localizedDescription)
+            NSLog("[Copiscope] Failed to load session %@: %@", id, error.localizedDescription)
         }
     }
 

@@ -15,12 +15,12 @@ final class UpdateService {
     var onUpdateFound: ((UpdateInfo) -> Void)?
     var onOpenWhatsNew: (() -> Void)?
 
-    private let logger = Logger(subsystem: "com.agentscope.app", category: "Update")
+    private let logger = Logger(subsystem: "com.copiscope.app", category: "Update")
     private var checkTimer: Timer?
     private var downloadingTask: Task<Void, Never>?
 
     private static let repoOwner = "YoavLax"
-    private static let repoName = "AgentScope"
+    private static let repoName = "Copiscope"
     private static let teamID = "DN8M2CQ4D2"
     private static let lastCheckKey = "lastUpdateCheckDate"
     private static let autoCheckKey = "autoCheckForUpdates"
@@ -148,7 +148,7 @@ final class UpdateService {
             logger.info("Update available: \(remoteVersion) (current: \(self.currentVersion))")
 
             // Build download URL through the Worker for tracking
-            let downloadURL = URL(string: "https://dl.agentscope.app/v\(remoteVersion)/AgentScope.dmg?type=update")!
+            let downloadURL = URL(string: "https://dl.copiscope.app/v\(remoteVersion)/Copiscope.dmg?type=update")!
 
             let releaseNotes = json["body"] as? String
 
@@ -199,11 +199,11 @@ final class UpdateService {
         do {
             // Download DMG to temp directory
             let tmpDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("AgentScopeUpdate-\(UUID().uuidString)")
+                .appendingPathComponent("CopIscopeUpdate-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
             tempDir = tmpDir
 
-            let dmgPath = tmpDir.appendingPathComponent("AgentScope.dmg")
+            let dmgPath = tmpDir.appendingPathComponent("Copiscope.dmg")
             logger.info("Downloading update from \(update.downloadURL.absoluteString)")
             try await downloadFile(from: update.downloadURL, to: dmgPath)
 

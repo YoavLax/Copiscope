@@ -1,22 +1,22 @@
 <p align="center">
-  <img src="AgentScope/Resources/logo.png" alt="AgentScope" width="200" />
+  <img src="Copiscope/Resources/logo.png" alt="Copiscope" width="200" />
 </p>
 
-<h1 align="center">AgentScope</h1>
+<h1 align="center">Copiscope</h1>
 
 <p align="center">
   A native macOS menu bar app for exploring, analyzing, and managing your GitHub Copilot agent sessions.
 </p>
 
 <p align="center">
-  <a href="https://github.com/YoavLax/AgentScope/releases/latest"><img src="https://img.shields.io/github/v/release/YoavLax/AgentScope?color=blue" alt="Release"></a>
+  <a href="https://github.com/YoavLax/Copiscope/releases/latest"><img src="https://img.shields.io/github/v/release/YoavLax/Copiscope?color=blue" alt="Release"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2014.0+-000000?logo=apple&logoColor=white" alt="Platform">
-  <img src="https://img.shields.io/badge/install-brew%20install%20--cask%20agentscope-FBB040?logo=homebrew&logoColor=white" alt="Homebrew">
+  <img src="https://img.shields.io/badge/install-brew%20install%20--cask%20copiscope-FBB040?logo=homebrew&logoColor=white" alt="Homebrew">
 </p>
 
 ---
 
-AgentScope reads your local GitHub Copilot session files from VS Code's `workspaceStorage` and surfaces them through a compact menu bar widget and a full-featured dashboard window. It provides real-time session tracking, cost estimation across all Copilot-supported models, analytics, timeline history, configuration health checks, and [**secret scanning that detects leaked credentials in your session history with real-time alerts**](#secret-scanning), all without sending any data off your machine.
+Copiscope reads your local GitHub Copilot session files from VS Code's `workspaceStorage` and surfaces them through a compact menu bar widget and a full-featured dashboard window. It provides real-time session tracking, cost estimation across all Copilot-supported models, analytics, timeline history, configuration health checks, and [**secret scanning that detects leaked credentials in your session history with real-time alerts**](#secret-scanning), all without sending any data off your machine.
 
 ## Table of Contents
 
@@ -52,29 +52,29 @@ AgentScope reads your local GitHub Copilot session files from VS Code's `workspa
 ### Homebrew (recommended)
 
 ```bash
-brew tap YoavLax/agentscope
-brew install --cask agentscope
+brew tap YoavLax/copiscope
+brew install --cask copiscope
 ```
 
 ### Updating
 
-AgentScope checks for updates automatically via GitHub Releases. When a new version is available, an indicator appears in the menu bar popover and in Settings > Updates. Clicking "Download and Install" downloads the new DMG, verifies its code signature, replaces the app, and relaunches. No manual steps required.
+Copiscope checks for updates automatically via GitHub Releases. When a new version is available, an indicator appears in the menu bar popover and in Settings > Updates. Clicking "Download and Install" downloads the new DMG, verifies its code signature, replaces the app, and relaunches. No manual steps required.
 
 You can also update via Homebrew:
 
 ```bash
-brew upgrade --cask agentscope
+brew upgrade --cask copiscope
 ```
 
 Or disable automatic checks entirely in Settings > Updates.
 
 ### Manual install
 
-Download the latest `AgentScope.dmg` from the [Releases](https://github.com/YoavLax/AgentScope/releases) page, open it, and drag AgentScope to your Applications folder.
+Download the latest `Copiscope.dmg` from the [Releases](https://github.com/YoavLax/Copiscope/releases) page, open it, and drag Copiscope to your Applications folder.
 
 ## How It Works
 
-AgentScope monitors `~/Library/Application Support/Code/User/workspaceStorage/` using macOS FSEvents for near-instant detection of changes to Copilot session files. It reads two session formats automatically:
+Copiscope monitors `~/Library/Application Support/Code/User/workspaceStorage/` using macOS FSEvents for near-instant detection of changes to Copilot session files. It reads two session formats automatically:
 
 - **Transcripts** (`GitHub.copilot-chat/transcripts/<id>.jsonl`) — the richer, preferred format used by recent Copilot versions
 - **Chat sessions** (`chatSessions/<id>.jsonl`) — the newer VS Code storage format; parsed when transcripts are absent
@@ -87,7 +87,7 @@ The app runs as an accessory process (`LSUIElement = true`) and lives in your me
 
 ## Secret Scanning
 
-AgentScope detects leaked credentials inside Copilot session files and alerts you in real time. Credential patterns scanned across your full session history include:
+Copiscope detects leaked credentials inside Copilot session files and alerts you in real time. Credential patterns scanned across your full session history include:
 
 - Private keys (RSA, OpenSSH, EC)
 - AWS access keys
@@ -100,11 +100,11 @@ AgentScope detects leaked credentials inside Copilot session files and alerts yo
 
 A false-positive filter (capture-group value extraction and allowlists for placeholders and conversational context) keeps noise low.
 
-**Real-time alerts**: when a session file is updated, AgentScope scans the new content for credentials and pops a floating alert panel on a match. Toggle in Settings > Security.
+**Real-time alerts**: when a session file is updated, Copiscope scans the new content for credentials and pops a floating alert panel on a match. Toggle in Settings > Security.
 
 **Background full-history scan**: a complete sweep of all session files runs under [Config Health](#config-health) and reports every match grouped by rule. Session and configuration checks load instantly while secret scanning progresses with an inline indicator.
 
-All scanning is local. Detected secrets never leave your machine, and AgentScope never transmits session content over the network.
+All scanning is local. Detected secrets never leave your machine, and Copiscope never transmits session content over the network.
 
 ## Menu Bar Widget
 
@@ -218,7 +218,7 @@ Press **Cmd+K** to open the command palette for quick navigation between rails a
 
 ## Cost Estimation
 
-AgentScope estimates session costs from token counts stored in session files, supplemented by OpenTelemetry span data from `agent-traces.db`. These are informational estimates based on published GitHub Copilot pricing, not actual billing data.
+Copiscope estimates session costs from token counts stored in session files, supplemented by OpenTelemetry span data from `agent-traces.db`. These are informational estimates based on published GitHub Copilot pricing, not actual billing data.
 
 Token counts are broken down by model per session. Each model maps to a pricing entry (dollars per million tokens). Pricing is sourced from [GitHub Copilot billing documentation](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing) (1 AI credit = $0.01 USD). Models supported include:
 
@@ -229,7 +229,7 @@ Token counts are broken down by model per session. Each model maps to a pricing 
 
 Per-session cost is `(uncached_input + output + cached_input + cache_creation) / 1M`, each multiplied by the model's rate.
 
-**Caveat**: actual billed amounts depend on factors AgentScope cannot observe, such as your Copilot subscription tier, included seat allowances, or billing adjustments.
+**Caveat**: actual billed amounts depend on factors Copiscope cannot observe, such as your Copilot subscription tier, included seat allowances, or billing adjustments.
 
 ## License
 

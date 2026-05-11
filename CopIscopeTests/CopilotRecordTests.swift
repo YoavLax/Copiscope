@@ -1,5 +1,5 @@
 import XCTest
-@testable import AgentScope
+@testable import Copiscope
 
 final class CopilotRecordTests: XCTestCase {
 

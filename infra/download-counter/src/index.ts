@@ -6,7 +6,7 @@ interface Env {
 }
 
 const VERSION_PATTERN = /^v\d+\.\d+\.\d+$/;
-const GITHUB_BASE = "https://github.com/YoavLax/Claudoscope/releases/download";
+const GITHUB_BASE = "https://github.com/YoavLax/Copiscope/releases/download";
 const RELEASE_EXISTS_CACHE_PREFIX = "release:exists:";
 const RELEASE_EXISTS_TTL_SECONDS = 60 * 60 * 24 * 7;
 const RELEASE_MISSING_TTL_SECONDS = 120;

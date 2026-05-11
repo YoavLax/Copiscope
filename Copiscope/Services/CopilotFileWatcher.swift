@@ -16,7 +16,7 @@ final class CopilotFileWatcher: @unchecked Sendable {
     private var stream: FSEventStreamRef?
     private let subject = PassthroughSubject<FileChange, Never>()
     private var debounceTimers: [String: DispatchWorkItem] = [:]
-    private let queue = DispatchQueue(label: "com.agentscope.filewatcher")
+    private let queue = DispatchQueue(label: "com.copiscope.filewatcher")
 
     private final class StreamBox {
         weak var watcher: CopilotFileWatcher?

@@ -106,11 +106,11 @@ struct MenuBarPopoverContent: View {
 
                 Divider()
 
-                PopoverMenuButton(label: "About AgentScope", systemImage: "info.circle") {
+                PopoverMenuButton(label: "About Copiscope", systemImage: "info.circle") {
                     showAbout = true
                 }
 
-                PopoverMenuButton(label: "Quit AgentScope", systemImage: "power", shortcut: "\u{2318}Q") {
+                PopoverMenuButton(label: "Quit Copiscope", systemImage: "power", shortcut: "\u{2318}Q") {
                     NSApplication.shared.terminate(nil)
                 }
             }

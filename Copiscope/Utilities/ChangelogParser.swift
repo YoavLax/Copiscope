@@ -5,13 +5,13 @@ struct ChangelogEntry {
     let notes: String
 
     var releaseURL: URL? {
-        URL(string: "https://github.com/agentscope/AgentScope/releases/tag/v\(version)")
+        URL(string: "https://github.com/YoavLax/Copiscope/releases/tag/v\(version)")
     }
 }
 
 enum ChangelogParser {
     private static let rawURL = URL(string:
-        "https://raw.githubusercontent.com/agentscope/AgentScope/master/CHANGELOG.md"
+        "https://raw.githubusercontent.com/YoavLax/Copiscope/master/CHANGELOG.md"
     )!
 
     /// Fetch CHANGELOG.md from GitHub and parse all entries.

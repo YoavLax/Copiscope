@@ -94,7 +94,7 @@ struct UpdateAvailableView: View {
             }
 
             VStack(spacing: 4) {
-                Text("AgentScope \(update.version) is available")
+                Text("Copiscope \(update.version) is available")
                     .font(.system(size: 15, weight: .semibold))
 
                 Text("You're currently on version \(updateService.currentVersion)")

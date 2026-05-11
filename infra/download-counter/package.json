@@ -1,5 +1,5 @@
 {
-  "name": "claudoscope-download-counter",
+  "name": "copiscope-download-counter",
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
