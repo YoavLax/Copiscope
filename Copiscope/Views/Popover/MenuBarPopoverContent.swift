@@ -12,7 +12,7 @@ struct MenuBarPopoverContent: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("AGENTSCOPE")
+                Text("COPISCOPE")
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(1.5)
                 Spacer()
