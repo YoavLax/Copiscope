@@ -92,6 +92,17 @@ final class SessionStore {
 
     private static let realtimeSecretScanKey = "realtimeSecretScanEnabled"
 
+    // Dock icon preference
+    var showInDock: Bool = false {
+        didSet {
+            UserDefaults.standard.set(showInDock, forKey: Self.showInDockKey)
+            DispatchQueue.main.async {
+                NSApplication.shared.setActivationPolicy(self.showInDock ? .regular : .accessory)
+            }
+        }
+    }
+    private static let showInDockKey = "showInDock"
+
     // Appearance
     var appearance: AppAppearance = .system
 
@@ -182,6 +193,8 @@ final class SessionStore {
         } else {
             self.realtimeSecretScanEnabled = defaults.bool(forKey: Self.realtimeSecretScanKey)
         }
+
+        self.showInDock = defaults.bool(forKey: Self.showInDockKey)
 
         setupWatcher()
         performInitialScan()

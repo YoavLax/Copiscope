@@ -39,6 +39,13 @@ struct AgentScopeApp: App {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             MainWindowController.shared.open(store: store, updateService: updateService)
         }
+
+        // Restore Dock icon if the user opted in
+        if UserDefaults.standard.bool(forKey: "showInDock") {
+            DispatchQueue.main.async {
+                NSApplication.shared.setActivationPolicy(.regular)
+            }
+        }
     }
 
     var body: some Scene {

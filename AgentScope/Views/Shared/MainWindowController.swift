@@ -4,8 +4,11 @@ import SwiftUI
 final class PersistentWindow: NSWindow {
     override func close() {
         super.close()
-        // Hide from Dock again when the full window is closed
-        NSApplication.shared.setActivationPolicy(.accessory)
+        // Only hide from Dock if the user hasn't opted to keep it visible
+        let keepInDock = UserDefaults.standard.bool(forKey: "showInDock")
+        if !keepInDock {
+            NSApplication.shared.setActivationPolicy(.accessory)
+        }
     }
 }
 

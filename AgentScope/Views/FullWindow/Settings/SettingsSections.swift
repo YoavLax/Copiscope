@@ -92,6 +92,24 @@ extension SettingsMainPanelView {
                 }
             }
             .padding(12)
+
+            Divider().padding(.horizontal, 12)
+
+            Toggle(isOn: Binding(
+                get: { store.showInDock },
+                set: { store.showInDock = $0 }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show in Dock")
+                        .font(.system(size: 13))
+                    Text("Keep the AgentScope icon in the Dock, even when the window is closed.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
     }
 
