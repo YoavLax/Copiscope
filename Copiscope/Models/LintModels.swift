@@ -49,6 +49,9 @@ enum LintCheckId: String, Sendable, CaseIterable {
     // Cross-cutting
     case XCT001  // total instruction token estimate
     case XCT002  // instructions >5000 tokens
+
+    // Environment setup
+    case ENV001  // OTEL not enabled — per-model token data unavailable
 }
 
 struct LintResult: Identifiable, Sendable {

@@ -327,28 +327,62 @@ extension SettingsMainPanelView {
     func observabilitySection() -> some View {
         let s = store.vscodeSettings
         settingsSection(id: "observability", icon: "waveform", title: "Observability") {
-            VStack(spacing: 0) {
-                settingsBoolRow("OTEL Enabled", value: s.otelEnabled)
-                if let endpoint = s.otelEndpoint, !endpoint.isEmpty {
-                    Divider().padding(.horizontal, 12)
-                    settingsRow("OTEL Endpoint", value: endpoint)
+            VStack(alignment: .leading, spacing: 8) {
+                // Setup callout when OTEL is not fully enabled
+                if !store.otelSetupComplete {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.orange)
+                            .padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Per-model token data is unavailable")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Enable OTEL in VS Code so Copiscope can show accurate per-model token counts and cost breakdowns.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Button("Enable") {
+                            store.enableOtelSettings()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.orange.opacity(0.08))
+                            .strokeBorder(Color.orange.opacity(0.2), lineWidth: 1)
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
                 }
-                if let type_ = s.otelExporterType {
+
+                VStack(spacing: 0) {
+                    settingsBoolRow("OTEL Enabled", value: s.otelEnabled)
+                    if let endpoint = s.otelEndpoint, !endpoint.isEmpty {
+                        Divider().padding(.horizontal, 12)
+                        settingsRow("OTEL Endpoint", value: endpoint)
+                    }
+                    if let type_ = s.otelExporterType {
+                        Divider().padding(.horizontal, 12)
+                        settingsRow("Exporter Type", value: type_)
+                    }
                     Divider().padding(.horizontal, 12)
-                    settingsRow("Exporter Type", value: type_)
+                    settingsBoolRow("Capture Content", value: s.otelCaptureContent)
+                    Divider().padding(.horizontal, 12)
+                    settingsBoolRow("DB Span Exporter", value: s.otelDbExporterEnabled)
+                    Divider().padding(.horizontal, 12)
+                    settingsBoolRow("Agent Debug Log", value: s.agentDebugLogEnabled)
                 }
-                Divider().padding(.horizontal, 12)
-                settingsBoolRow("Capture Content", value: s.otelCaptureContent)
-                Divider().padding(.horizontal, 12)
-                settingsBoolRow("DB Span Exporter", value: s.otelDbExporterEnabled)
-                Divider().padding(.horizontal, 12)
-                settingsBoolRow("Agent Debug Log", value: s.agentDebugLogEnabled)
+                .background(.bar)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
-            .background(.bar)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary, lineWidth: 1))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
     }
 

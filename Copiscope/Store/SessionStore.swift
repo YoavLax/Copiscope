@@ -109,7 +109,8 @@ final class SessionStore {
     private let vscodeUserDir: URL
     private let parser = SessionParser()
     private let cache = SessionCache()
-    private let otelReader: OtelSpanReader?
+    private var otelReader: OtelSpanReader?
+    private let otelDbPath: String
     private let watcher: CopilotFileWatcher
     private let linterService = ConfigLinterService()
     private var cancellables = Set<AnyCancellable>()
@@ -173,6 +174,7 @@ final class SessionStore {
         let otelDbPath = vscodeUserDir
             .appendingPathComponent("globalStorage/github.copilot-chat/agent-traces.db")
             .path
+        self.otelDbPath = otelDbPath
         if FileManager.default.fileExists(atPath: otelDbPath) {
             self.otelReader = OtelSpanReader(dbPath: otelDbPath)
         } else {
@@ -355,8 +357,12 @@ final class SessionStore {
             break
 
         case .otelDbChanged:
-            // OTEL DB updated — could re-enrich recent sessions
-            break
+            // If the reader wasn't initialized (DB didn't exist at launch), try now
+            if otelReader == nil, FileManager.default.fileExists(atPath: otelDbPath) {
+                otelReader = OtelSpanReader(dbPath: otelDbPath)
+                // Re-enrich all sessions with the newly available OTEL data
+                rescanAllSessions()
+            }
 
         case .mustRescan:
             rescanAllSessions()
@@ -757,6 +763,46 @@ final class SessionStore {
         return items.filter { seen.insert(key($0)).inserted }
     }
 
+    // MARK: - OTEL Setup
+
+    /// Whether the two required OTEL settings are both enabled.
+    var otelSetupComplete: Bool {
+        vscodeSettings.otelEnabled == true && vscodeSettings.otelDbExporterEnabled == true
+    }
+
+    /// Writes `github.copilot.chat.otel.enabled` and
+    /// `github.copilot.chat.otel.dbSpanExporter.enabled` into VS Code's settings.json.
+    /// Returns true on success.
+    @discardableResult
+    func enableOtelSettings() -> Bool {
+        let settingsURL = vscodeUserDir.appendingPathComponent("settings.json")
+        let fm = FileManager.default
+
+        // Read existing settings (or start empty)
+        var json: [String: Any] = [:]
+        if let data = fm.contents(atPath: settingsURL.path),
+           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            json = existing
+        }
+
+        json["github.copilot.chat.otel.enabled"] = true
+        json["github.copilot.chat.otel.dbSpanExporter.enabled"] = true
+
+        guard let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return false }
+
+        do {
+            try text.write(to: settingsURL, atomically: true, encoding: .utf8)
+        } catch {
+            NSLog("[Copiscope] Failed to write OTEL settings: %@", error.localizedDescription)
+            return false
+        }
+
+        // Reload settings so the UI reflects the change immediately
+        vscodeSettings = loadVSCodeSettings()
+        return true
+    }
+
     private func resolveWorkspacePath(at hashPath: URL) -> String? {
         let workspaceJsonPath = hashPath.appendingPathComponent("workspace.json")
         guard let data = FileManager.default.contents(atPath: workspaceJsonPath.path),
@@ -945,7 +991,8 @@ final class SessionStore {
             agents: agents,
             prompts: prompts,
             mcpServers: mcpServers,
-            chatSessionDirs: chatSessionDirs
+            chatSessionDirs: chatSessionDirs,
+            vscodeSettings: vscodeSettings
         )
 
         // Run the main (fast) lint pass

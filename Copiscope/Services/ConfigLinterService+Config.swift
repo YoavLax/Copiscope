@@ -4,6 +4,36 @@ import Foundation
 
 extension ConfigLinterService {
 
+    // MARK: - Environment Checks
+
+    func environmentChecks(_ settings: VSCodeSettings) -> [LintResult] {
+        var results: [LintResult] = []
+
+        // ENV001: OTEL not fully enabled — per-model token data is unavailable
+        let otelOn = settings.otelEnabled == true
+        let dbExporterOn = settings.otelDbExporterEnabled == true
+        if !otelOn || !dbExporterOn {
+            let missing: String
+            if !otelOn && !dbExporterOn {
+                missing = "`github.copilot.chat.otel.enabled` and `github.copilot.chat.otel.dbSpanExporter.enabled` are both disabled"
+            } else if !otelOn {
+                missing = "`github.copilot.chat.otel.enabled` is disabled"
+            } else {
+                missing = "`github.copilot.chat.otel.dbSpanExporter.enabled` is disabled"
+            }
+            results.append(LintResult(
+                severity: .warning,
+                checkId: .ENV001,
+                filePath: "settings.json",
+                message: "OTEL not fully enabled — \(missing). Per-model token counts and cost breakdowns will be missing or estimated.",
+                fix: "Open Settings > Observability and click \"Enable\", or add the keys manually to your VS Code settings.json.",
+                displayPath: "Configuration"
+            ))
+        }
+
+        return results
+    }
+
     // Very rough approximation: 1 token ≈ 4 chars
     private func estimateTokens(_ text: String?) -> Int {
         guard let text else { return 0 }

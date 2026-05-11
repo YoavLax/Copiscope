@@ -12,10 +12,14 @@ final class ConfigLinterService: Sendable {
         let prompts: [PromptEntry]
         let mcpServers: [McpServerEntry]
         let chatSessionDirs: [(workspaceId: String, url: URL)]  // for secret scanning
+        let vscodeSettings: VSCodeSettings
     }
 
     func lint(_ input: Input) async -> [LintResult] {
         var results: [LintResult] = []
+
+        // Environment / setup checks (e.g. OTEL not enabled)
+        results += environmentChecks(input.vscodeSettings)
 
         // Session performance
         results += sessionChecks(input.sessions)
