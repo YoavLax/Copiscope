@@ -88,7 +88,7 @@ struct PricingTables {
         "claude-sonnet-4":   TokenPricing(input: 3.00,  output: 15.00, cacheRead: 0.30,  cacheWrite: 3.75),
         "claude-haiku-4.5":  TokenPricing(input: 1.00,  output: 5.00,  cacheRead: 0.10,  cacheWrite: 1.25),
         // OpenAI
-        "gpt-5.5":           TokenPricing(input: 5.00,  output: 30.00, cacheRead: 0,     cacheWrite: 0),
+        "gpt-5.5":           TokenPricing(input: 5.00,  output: 30.00, cacheRead: 0.50,  cacheWrite: 0),
         "gpt-5.4":           TokenPricing(input: 2.50,  output: 15.00, cacheRead: 0.25,  cacheWrite: 0),
         "gpt-5.4-mini":      TokenPricing(input: 0.75,  output: 4.50,  cacheRead: 0.075, cacheWrite: 0),
         "gpt-5.4-nano":      TokenPricing(input: 0.20,  output: 1.25,  cacheRead: 0.02,  cacheWrite: 0),

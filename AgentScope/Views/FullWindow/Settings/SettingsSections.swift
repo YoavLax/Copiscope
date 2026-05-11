@@ -167,14 +167,28 @@ extension SettingsMainPanelView {
     }
 
     func pricingRows() -> [PricingRow] {
-        let models: [(String, String, Double, Double)] = [
-            ("Claude Opus 4", "claude-opus-4", 15.0, 75.0),
-            ("Claude Sonnet 4", "claude-sonnet-4-20250514", 3.0, 15.0),
-            ("GPT-4o", "gpt-4o", 2.50, 10.0),
-            ("GPT-4o mini", "gpt-4o-mini", 0.15, 0.60),
-            ("Claude Haiku", "claude-haiku-3.5", 0.80, 4.0),
+        // Source: https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
+        let models: [(String, Double, Double)] = [
+            // Anthropic
+            ("Claude Haiku 4.5",    1.00,  5.00),
+            ("Claude Sonnet 4/4.5/4.6", 3.00, 15.00),
+            ("Claude Opus 4.5/4.6/4.7", 5.00, 25.00),
+            // OpenAI
+            ("GPT-5 mini",          0.25,  2.00),
+            ("GPT-4.1",             2.00,  8.00),
+            ("GPT-5.2 / 5.2-Codex / 5.3-Codex", 1.75, 14.00),
+            ("GPT-5.4",             2.50, 15.00),
+            ("GPT-5.4 mini",        0.75,  4.50),
+            ("GPT-5.4 nano",        0.20,  1.25),
+            ("GPT-5.5",             5.00, 30.00),
+            // Google
+            ("Gemini 2.5 Pro",      1.25, 10.00),
+            ("Gemini 3 Flash",      0.50,  3.00),
+            ("Gemini 3.1 Pro",      2.00, 12.00),
+            // xAI
+            ("Grok Code Fast 1",   0.20,  1.50),
         ]
-        return models.map { label, _, input, output in
+        return models.map { label, input, output in
             PricingRow(
                 model: label,
                 input: String(format: "$%.2f", input),

@@ -263,6 +263,27 @@ final class SessionStore {
                 if let reader = otelReader {
                     let tokenData = reader.tokenData(forSession: sessionId)
                     if tokenData.chatSpanCount > 0 {
+                        let breakdown = tokenData.spanBreakdown.map { b in
+                            ModelUsageBreakdown(
+                                model: b.model,
+                                vendor: b.vendor,
+                                inputTokens: b.inputTokens,
+                                outputTokens: b.outputTokens,
+                                cachedTokens: b.cachedTokens,
+                                reasoningTokens: b.reasoningTokens,
+                                estimatedCost: estimateCostFromTokens(
+                                    model: b.model,
+                                    inputTokens: b.inputTokens,
+                                    outputTokens: b.outputTokens,
+                                    cachedTokens: b.cachedTokens
+                                ),
+                                requestCount: b.spanCount,
+                                multiplierCost: 0,
+                                turnCount: b.spanCount
+                            )
+                        }
+                        let totalCost = breakdown.reduce(0) { $0 + $1.estimatedCost }
+                        let primaryModel = tokenData.spanBreakdown.max(by: { $0.spanCount < $1.spanCount })?.model
                         summary = SessionSummary(
                             id: summary.id,
                             workspaceId: summary.workspaceId,
@@ -270,7 +291,7 @@ final class SessionStore {
                             firstTimestamp: summary.firstTimestamp,
                             lastTimestamp: summary.lastTimestamp,
                             messageCount: summary.messageCount,
-                            primaryModel: tokenData.models.first ?? summary.primaryModel,
+                            primaryModel: primaryModel ?? summary.primaryModel,
                             vendor: tokenData.providers.first,
                             turnCount: summary.turnCount,
                             toolCallCount: summary.toolCallCount,
@@ -280,10 +301,10 @@ final class SessionStore {
                             totalOutputTokens: tokenData.totalOutputTokens,
                             totalCachedTokens: tokenData.totalCachedTokens,
                             totalReasoningTokens: tokenData.totalReasoningTokens,
-                            estimatedCost: 0,
+                            estimatedCost: totalCost,
                             premiumRequestCount: tokenData.chatSpanCount,
                             totalMultiplierCost: 0,
-                            modelBreakdown: []
+                            modelBreakdown: breakdown
                         )
                     }
                 }
