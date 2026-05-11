@@ -2,10 +2,10 @@ cask "claudoscope" do
   version "1.0.0"
   sha256 "PLACEHOLDER"
 
-  url "https://github.com/cordwainersmith/Claudoscope/releases/download/v#{version}/Claudoscope.dmg"
+  url "https://github.com/YoavLax/Claudoscope/releases/download/v#{version}/Claudoscope.dmg"
   name "Claudoscope"
   desc "macOS menu bar companion for Claude Code sessions"
-  homepage "https://github.com/cordwainersmith/Claudoscope"
+  homepage "https://github.com/YoavLax/Claudoscope"
   auto_updates true
 
   depends_on macos: ">= :sonoma"

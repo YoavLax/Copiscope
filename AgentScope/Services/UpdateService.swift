@@ -19,7 +19,7 @@ final class UpdateService {
     private var checkTimer: Timer?
     private var downloadingTask: Task<Void, Never>?
 
-    private static let repoOwner = "agentscope"
+    private static let repoOwner = "YoavLax"
     private static let repoName = "AgentScope"
     private static let teamID = "DN8M2CQ4D2"
     private static let lastCheckKey = "lastUpdateCheckDate"

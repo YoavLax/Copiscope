@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cordwainersmith/Claudoscope/releases/latest"><img src="https://img.shields.io/github/v/release/cordwainersmith/Claudoscope?color=blue" alt="Release"></a>
+  <a href="https://github.com/YoavLax/Claudoscope/releases/latest"><img src="https://img.shields.io/github/v/release/YoavLax/Claudoscope?color=blue" alt="Release"></a>
   <a href="https://claudoscope.com/"><img src="https://img.shields.io/badge/website-claudoscope.com-6366f1" alt="Website"></a>
   <img src="https://img.shields.io/badge/platform-macOS%2014.0+-000000?logo=apple&logoColor=white" alt="Platform">
   <img src="https://img.shields.io/badge/install-brew%20install%20--cask%20claudoscope-FBB040?logo=homebrew&logoColor=white" alt="Homebrew">
@@ -59,7 +59,7 @@ Claudoscope reads your local Claude Code session files (`~/.claude/projects/`) a
 ### Homebrew (recommended)
 
 ```bash
-brew tap cordwainersmith/claudoscope
+brew tap YoavLax/claudoscope
 brew install --cask claudoscope
 ```
 
@@ -77,7 +77,7 @@ Or disable automatic checks entirely in Settings > Updates.
 
 ### Manual install
 
-Download the latest `Claudoscope.dmg` from the [Releases](https://github.com/cordwainersmith/Claudoscope/releases) page, open it, and drag Claudoscope to your Applications folder.
+Download the latest `Claudoscope.dmg` from the [Releases](https://github.com/YoavLax/Claudoscope/releases) page, open it, and drag Claudoscope to your Applications folder.
 
 ## How It Works
 
