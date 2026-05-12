@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-05-12
+### Bug Fixes
+- Fix analytics Tokens and Cost showing identical values across all time-range filters (Today / 7 days / 30 days / All). Root cause: a previous fix switched range filtering to use `lastTimestamp`, which caused any session whose last message landed today to be counted in every range — most notably a large session that started yesterday but was still active today inflated the "Today" total to match the 30-day total. Fixed by filtering session inclusion by `firstTimestamp` (when the session *started*) while keeping `lastTimestamp` for Today sidebar stats and daily bar-chart bucketing.
+- Fix analytics scanner preferring transcript-format JSONL (no token data) over chatSessions-format JSONL (has `completionTokens`) when both exist for the same session ID. Older sessions no longer in the OTEL database now correctly surface their token counts from the chatSessions file.
+- Fix file-watcher live updates always using the transcript parser regardless of whether the changed file was a chatSessions file, causing token data to be dropped on live updates.
+
 ## [1.0.1] - 2026-05-12
 ### Bug Fixes
 - Fix menu bar popover "Today" stats showing last-24-hours data instead of the current calendar day. The popover now uses the same date-boundary logic and session pass as the main Analytics dashboard, so the two always agree.

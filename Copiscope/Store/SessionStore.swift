@@ -119,6 +119,9 @@ final class SessionStore {
     private let watcher: CopilotFileWatcher
     private let linterService = ConfigLinterService()
     private var cancellables = Set<AnyCancellable>()
+    /// Persistent cache: session ID → token data loaded from disk.
+    /// Used as fallback when OTEL DB has pruned old sessions.
+    private var persistedTokenCache: [String: PersistedTokenData] = [:]
     /// Session IDs touched by the file watcher since the last OTEL DB update.
     /// Used to re-enrich sessions after OTEL spans are written (which lags the JSONL write).
     private var pendingOtelEnrichment: Set<String> = []
@@ -186,6 +189,8 @@ final class SessionStore {
 
         self.showInDock = defaults.bool(forKey: Self.showInDockKey)
 
+        self.persistedTokenCache = SessionTokenPersistence.shared.load()
+
         setupWatcher()
         performInitialScan()
     }
@@ -232,6 +237,9 @@ final class SessionStore {
 
             self.workspaces = scannedWorkspaces
             self.sessionsByWorkspace = scannedSessions
+            // Persist newly-enriched token data, then fill in old sessions from disk cache.
+            self.updatePersistedTokenCache()
+            self.applyCachedTokenData()
             self.isLoading = false
             self.checkActiveSession()
             self.recomputeAnalytics()
@@ -256,11 +264,21 @@ final class SessionStore {
             await cache.invalidate(sessionId)
 
             do {
-                var summary = try await parser.parseMetadata(
-                    url: url,
-                    sessionId: sessionId,
-                    workspaceId: workspaceId
-                )
+                let isChatSession = url.pathComponents.contains("chatSessions")
+                var summary: SessionSummary
+                if isChatSession {
+                    summary = try await parser.parseMetadataChatSession(
+                        url: url,
+                        sessionId: sessionId,
+                        workspaceId: workspaceId
+                    )
+                } else {
+                    summary = try await parser.parseMetadata(
+                        url: url,
+                        sessionId: sessionId,
+                        workspaceId: workspaceId
+                    )
+                }
 
                 // Enrich with OTEL data
                 if let reader = otelReader {
@@ -399,6 +417,7 @@ final class SessionStore {
                     break
                 }
             }
+            updatePersistedTokenCache()
             recomputeAnalytics()
 
         case .mustRescan:
@@ -424,7 +443,86 @@ final class SessionStore {
             let (scannedWorkspaces, scannedSessions) = await scanner.scan()
             self.workspaces = scannedWorkspaces
             self.sessionsByWorkspace = scannedSessions
+            self.updatePersistedTokenCache()
+            self.applyCachedTokenData()
             self.recomputeAnalytics()
+        }
+    }
+
+    // MARK: - Token data persistence
+
+    /// Save any session with real token data to the on-disk cache.
+    private func updatePersistedTokenCache() {
+        var changed = false
+        for (_, sessions) in sessionsByWorkspace {
+            for session in sessions {
+                guard session.totalInputTokens > 0 || session.totalOutputTokens > 0 else { continue }
+                let entry = PersistedTokenData(
+                    totalInputTokens: session.totalInputTokens,
+                    totalOutputTokens: session.totalOutputTokens,
+                    totalCachedTokens: session.totalCachedTokens,
+                    totalReasoningTokens: session.totalReasoningTokens,
+                    estimatedCost: session.estimatedCost,
+                    premiumRequestCount: session.premiumRequestCount,
+                    primaryModel: session.primaryModel,
+                    vendor: session.vendor,
+                    modelBreakdown: session.modelBreakdown.map { b in
+                        PersistedModelBreakdown(
+                            model: b.model, vendor: b.vendor,
+                            inputTokens: b.inputTokens, outputTokens: b.outputTokens,
+                            cachedTokens: b.cachedTokens, reasoningTokens: b.reasoningTokens,
+                            estimatedCost: b.estimatedCost, spanCount: b.requestCount
+                        )
+                    }
+                )
+                if persistedTokenCache[session.id] != entry {
+                    persistedTokenCache[session.id] = entry
+                    changed = true
+                }
+            }
+        }
+        if changed {
+            SessionTokenPersistence.shared.save(persistedTokenCache)
+        }
+    }
+
+    /// Fill in token data from disk cache for sessions the OTEL DB no longer covers.
+    private func applyCachedTokenData() {
+        for (wsId, var sessions) in sessionsByWorkspace {
+            var changed = false
+            for i in sessions.indices {
+                let s = sessions[i]
+                guard s.totalInputTokens == 0, s.totalOutputTokens == 0,
+                      let cached = persistedTokenCache[s.id]
+                else { continue }
+                sessions[i] = SessionSummary(
+                    id: s.id, workspaceId: s.workspaceId, title: s.title,
+                    firstTimestamp: s.firstTimestamp, lastTimestamp: s.lastTimestamp,
+                    messageCount: s.messageCount,
+                    primaryModel: cached.primaryModel ?? s.primaryModel,
+                    vendor: cached.vendor ?? s.vendor,
+                    turnCount: s.turnCount, toolCallCount: s.toolCallCount,
+                    hasError: s.hasError, observability: s.observability,
+                    totalInputTokens: cached.totalInputTokens,
+                    totalOutputTokens: cached.totalOutputTokens,
+                    totalCachedTokens: cached.totalCachedTokens,
+                    totalReasoningTokens: cached.totalReasoningTokens,
+                    estimatedCost: cached.estimatedCost,
+                    premiumRequestCount: cached.premiumRequestCount,
+                    totalMultiplierCost: 0,
+                    modelBreakdown: cached.modelBreakdown.map { b in
+                        ModelUsageBreakdown(
+                            model: b.model, vendor: b.vendor,
+                            inputTokens: b.inputTokens, outputTokens: b.outputTokens,
+                            cachedTokens: b.cachedTokens, reasoningTokens: b.reasoningTokens,
+                            estimatedCost: b.estimatedCost, requestCount: b.spanCount,
+                            multiplierCost: 0, turnCount: b.spanCount
+                        )
+                    }
+                )
+                changed = true
+            }
+            if changed { sessionsByWorkspace[wsId] = sessions }
         }
     }
 
@@ -458,9 +556,8 @@ final class SessionStore {
         for workspace in workspaces {
             let sessions = sessionsByWorkspace[workspace.id] ?? []
             for session in sessions {
-                // Filter by lastTimestamp — a session should appear in the range when it was
-                // last active, not when it was first created. This prevents long-running sessions
-                // (started > 30 days ago but still active) from being dropped from the 30-day view.
+                // lastTimestamp: used for today's sidebar stats and daily bar-chart bucketing
+                // (shows when a session was last active).
                 let date = isoFull.date(from: session.lastTimestamp)
                     ?? isoBasic.date(from: session.lastTimestamp)
 
@@ -473,9 +570,16 @@ final class SessionStore {
                     todayWorkspaceIdsLocal.insert(workspace.id)
                 }
 
-                // Time-range filter
-                if let from = fromDate, let d = date, d < from { continue }
-                if let to = toDate, let d = date, d >= to { continue }
+                // Range filter uses firstTimestamp — a session belongs to the period it STARTED.
+                // This prevents long-running cross-day sessions from inflating shorter ranges:
+                // a session that started May 11 but had its last message on May 12 should appear
+                // in the "7 days" view, not the "Today" view, so token counts differ meaningfully.
+                let filterDate = isoFull.date(from: session.firstTimestamp)
+                    ?? isoBasic.date(from: session.firstTimestamp)
+                    ?? date  // fallback to lastTimestamp if firstTimestamp is empty
+
+                if let from = fromDate, let d = filterDate, d < from { continue }
+                if let to = toDate, let d = filterDate, d >= to { continue }
 
                 totalSessions += 1
                 totalMessages += session.messageCount

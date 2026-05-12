@@ -37,27 +37,29 @@ struct WorkspaceScanner {
             // Check both known session directory layouts:
             //   - GitHub.copilot-chat/transcripts/  (older VS Code / Copilot versions)
             //   - chatSessions/                      (newer VS Code versions)
-            // Prefer transcripts when both exist for the same session ID (richer format).
+            // For METADATA (analytics), prefer chatSessions because it contains completionTokens.
+            // Transcripts are used when no chatSessions file exists for that ID.
+            // (Full session loading in loadSession() still prefers transcripts for richer content.)
             let transcriptsDir = hashPath.appendingPathComponent("GitHub.copilot-chat").appendingPathComponent("transcripts")
             let chatSessionsDir = hashPath.appendingPathComponent("chatSessions")
 
             var seenSessionIds = Set<String>()
             var jsonlFiles: [(url: URL, sessionId: String, isChatSession: Bool)] = []
 
-            // Transcripts first (preferred format)
-            if let files = try? fm.contentsOfDirectory(atPath: transcriptsDir.path) {
-                for file in files where file.hasSuffix(".jsonl") {
-                    let sessionId = String(file.dropLast(6))
-                    seenSessionIds.insert(sessionId)
-                    jsonlFiles.append((transcriptsDir.appendingPathComponent(file), sessionId, false))
-                }
-            }
-            // chatSessions second — skip any IDs already found in transcripts
+            // chatSessions first — has completionTokens, better for analytics
             if let files = try? fm.contentsOfDirectory(atPath: chatSessionsDir.path) {
                 for file in files where file.hasSuffix(".jsonl") {
                     let sessionId = String(file.dropLast(6))
-                    guard !seenSessionIds.contains(sessionId) else { continue }
+                    seenSessionIds.insert(sessionId)
                     jsonlFiles.append((chatSessionsDir.appendingPathComponent(file), sessionId, true))
+                }
+            }
+            // Transcripts second — only if no chatSessions file exists for the same ID
+            if let files = try? fm.contentsOfDirectory(atPath: transcriptsDir.path) {
+                for file in files where file.hasSuffix(".jsonl") {
+                    let sessionId = String(file.dropLast(6))
+                    guard !seenSessionIds.contains(sessionId) else { continue }
+                    jsonlFiles.append((transcriptsDir.appendingPathComponent(file), sessionId, false))
                 }
             }
             guard !jsonlFiles.isEmpty else { continue }
