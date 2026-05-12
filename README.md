@@ -72,6 +72,16 @@ Or disable automatic checks entirely in Settings > Updates.
 
 Download the latest `Copiscope.dmg` from the [Releases](https://github.com/YoavLax/Copiscope/releases) page, open it, and drag Copiscope to your Applications folder.
 
+### Gatekeeper / "App is damaged" prompt
+
+Copiscope is not yet notarized with an Apple Developer ID. On first launch macOS may block it with a Gatekeeper warning. To allow it, run:
+
+```bash
+xattr -d com.apple.quarantine /Applications/Copiscope.app
+```
+
+Alternatively: right-click the app in Finder → **Open** → **Open** in the dialog. macOS remembers the exception and won't ask again.
+
 ## How It Works
 
 Copiscope monitors `~/Library/Application Support/Code/User/workspaceStorage/` using macOS FSEvents for near-instant detection of changes to Copilot session files. It reads two session formats automatically:
