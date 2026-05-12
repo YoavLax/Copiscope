@@ -238,3 +238,12 @@ Per-session cost is `(uncached_input + output + cached_input + cache_creation) /
 ## License
 
 MIT
+
+---
+
+## Acknowledgements
+
+Special thanks to Liran Baba for the inspiration.
+
+| <img src="https://github.com/cordwainersmith.png?size=115" width="115"><br><sub>@cordwainersmith</sub><br><br>[![GitHub](https://img.shields.io/badge/GitHub-000000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/cordwainersmith)<br>[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/liranba/) |
+|---|
