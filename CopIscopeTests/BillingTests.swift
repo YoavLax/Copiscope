@@ -14,30 +14,30 @@ final class BillingTests: XCTestCase {
     }
 
     func testCostEstimation() {
-        // Claude Opus: 15/MTok input, 75/MTok output
+        // Claude Opus: $5/MTok input, $25/MTok output (Copilot-proxied pricing)
         let cost = estimateCostFromTokens(
             model: "claude-opus-4.6",
             inputTokens: 1_000_000,
             outputTokens: 100_000,
             cachedTokens: 0
         )
-        // 1M input tokens * $15/MTok + 100K output tokens * $75/MTok
-        let expected = 15.0 + 7.5
+        // 1M input tokens * $5/MTok + 100K output tokens * $25/MTok
+        let expected = 5.0 + 2.5
         XCTAssertEqual(cost, expected, accuracy: 0.01)
     }
 
     func testCostEstimationWithCache() {
-        // 1M input tokens, 500K cached
+        // 1M input tokens, 500K cached — Copilot pricing
         let cost = estimateCostFromTokens(
             model: "claude-opus-4.6",
             inputTokens: 1_000_000,
             outputTokens: 100_000,
             cachedTokens: 500_000
         )
-        // Uncached: 500K * $15/MTok = $7.50
-        // Cached: 500K * $1.50/MTok = $0.75
-        // Output: 100K * $75/MTok = $7.50
-        let expected = 7.5 + 0.75 + 7.5
+        // Uncached: 500K * $5/MTok = $2.50
+        // Cached:   500K * $0.50/MTok = $0.25
+        // Output:   100K * $25/MTok = $2.50
+        let expected = 2.5 + 0.25 + 2.5
         XCTAssertEqual(cost, expected, accuracy: 0.01)
     }
 

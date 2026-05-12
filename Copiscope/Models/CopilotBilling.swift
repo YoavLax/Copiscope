@@ -114,7 +114,19 @@ struct PricingTables {
         // Exact match
         if let p = byModel[stripped] { return p }
         // Prefix match (e.g. "claude-sonnet-4.6-20241022" → "claude-sonnet-4.6")
-        for (key, p) in byModel { if stripped.hasPrefix(key) || key.hasPrefix(stripped) { return p } }
+        // Use longest-match-wins to avoid gpt-4o matching gpt-4o-mini-* models.
+        var bestKey: String? = nil
+        var bestLength = 0
+        for key in byModel.keys {
+            if stripped.hasPrefix(key) || key.hasPrefix(stripped) {
+                let matchLen = min(key.count, stripped.count)
+                if matchLen > bestLength {
+                    bestLength = matchLen
+                    bestKey = key
+                }
+            }
+        }
+        if let k = bestKey, let p = byModel[k] { return p }
         // Family fallbacks
         if stripped.contains("opus")   { return byModel["claude-opus-4.6"] ?? .unknown }
         if stripped.contains("sonnet") { return byModel["claude-sonnet-4.6"] ?? .unknown }

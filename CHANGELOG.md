@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-05-12
+### Bug Fixes
+- Fix menu bar popover "Today" stats showing last-24-hours data instead of the current calendar day. The popover now uses the same date-boundary logic and session pass as the main Analytics dashboard, so the two always agree.
+- Fix `gpt-4o-mini` model lookup non-deterministically matching the `gpt-4o` pricing entry when iterating the dictionary. The prefix matcher now uses longest-match-wins, preventing `gpt-4o` from shadowing `gpt-4o-mini` and similar cases.
+
 ## [0.6.2]
 ### New Features
 - Settings rail surfaces the new `prUrlTemplate` top-level key from Claude Code 2.1.119, rendered in the Attribution section alongside the commit and PR templates.

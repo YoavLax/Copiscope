@@ -31,6 +31,11 @@ final class SessionStore {
     var sessionsByWorkspace: [String: [SessionSummary]] = [:]
     var hasActiveSession: Bool = false
     var analyticsData: AnalyticsData = .empty
+    // Today-only stats — always for the current calendar day, updated by recomputeAnalytics()
+    var todaySessionCount: Int = 0
+    var todayWorkspaceCount: Int = 0
+    var todayTokens: Int = 0
+    var todayCost: Double = 0.0
     var selectedWorkspaceId: String?
     var analyticsTimeRange: AnalyticsTimeRange = .thirtyDays
     var analyticsCustomFrom: Date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
@@ -131,17 +136,6 @@ final class SessionStore {
         return result
     }
 
-    /// Today's sessions
-    var todaySessions: [SessionSummary] {
-        let startOfToday = Calendar.current.startOfDay(for: Date())
-        return allSessionsWithWorkspaces
-            .map(\.session)
-            .filter { session in
-                guard let date = ISO8601.parse(session.lastTimestamp) else { return false }
-                return date >= startOfToday
-            }
-    }
-
     /// Recent sessions (last 3, any date)
     var recentSessions: [SessionSummary] {
         Array(
@@ -150,15 +144,6 @@ final class SessionStore {
                 .sorted { $0.lastTimestamp > $1.lastTimestamp }
                 .prefix(3)
         )
-    }
-
-    /// Today's stats
-    var todayTokens: Int {
-        todaySessions.reduce(0) { $0 + $1.totalInputTokens + $1.totalOutputTokens }
-    }
-
-    var todayCost: Double {
-        todaySessions.reduce(0.0) { $0 + $1.estimatedCost }
     }
 
     func clearAlertedSecrets() {
@@ -464,6 +449,12 @@ final class SessionStore {
         var workspaceCostMap: [String: WorkspaceCost] = [:]
         var modelMap: [String: ModelUsage] = [:]
 
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        var todaySessionCountLocal = 0
+        var todayTokensLocal = 0
+        var todayCostLocal = 0.0
+        var todayWorkspaceIdsLocal = Set<String>()
+
         for workspace in workspaces {
             let sessions = sessionsByWorkspace[workspace.id] ?? []
             for session in sessions {
@@ -472,6 +463,15 @@ final class SessionStore {
                 // (started > 30 days ago but still active) from being dropped from the 30-day view.
                 let date = isoFull.date(from: session.lastTimestamp)
                     ?? isoBasic.date(from: session.lastTimestamp)
+
+                // Always accumulate today's stats before the main range filter so they
+                // remain accurate regardless of which analytics time range is selected.
+                if let d = date, d >= todayStart {
+                    todaySessionCountLocal += 1
+                    todayTokensLocal += session.totalInputTokens + session.totalOutputTokens
+                    todayCostLocal += session.estimatedCost
+                    todayWorkspaceIdsLocal.insert(workspace.id)
+                }
 
                 // Time-range filter
                 if let from = fromDate, let d = date, d < from { continue }
@@ -564,6 +564,11 @@ final class SessionStore {
             parallelToolAnalytics: .empty,
             billingAnalytics: .empty
         )
+
+        todaySessionCount = todaySessionCountLocal
+        todayTokens = todayTokensLocal
+        todayCost = todayCostLocal
+        todayWorkspaceCount = todayWorkspaceIdsLocal.count
     }
 
     func loadSession(id: String, workspaceId: String) async {

@@ -37,13 +37,12 @@ struct MenuBarPopoverContent: View {
 
                 Divider()
             } else {
-                // Today's stats. sessionCount excludes subagents to match the
-                // dashboard's session counter; token/cost include them.
+                // Today's stats — always for the current calendar day.
                 StatsStrip(
-                    sessionCount: store.todaySessions.count,
+                    sessionCount: store.todaySessionCount,
                     tokenCount: store.todayTokens,
                     cost: store.todayCost,
-                    workspaceCount: Set(store.todaySessions.map(\.workspaceId)).count
+                    workspaceCount: store.todayWorkspaceCount
                 )
 
                 // Sparkline
