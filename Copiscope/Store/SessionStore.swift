@@ -37,7 +37,7 @@ final class SessionStore {
     var todayTokens: Int = 0
     var todayCost: Double = 0.0
     var selectedWorkspaceId: String?
-    var analyticsTimeRange: AnalyticsTimeRange = .thirtyDays
+    var analyticsTimeRange: AnalyticsTimeRange = .today
     var analyticsCustomFrom: Date = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
     var analyticsCustomTo: Date = Date()
     var isLoading: Bool = true
@@ -556,27 +556,27 @@ final class SessionStore {
         for workspace in workspaces {
             let sessions = sessionsByWorkspace[workspace.id] ?? []
             for session in sessions {
-                // lastTimestamp: used for today's sidebar stats and daily bar-chart bucketing
-                // (shows when a session was last active).
+                // lastTimestamp: used for daily bar-chart bucketing only
+                // (shows when a session was last active, so charts reflect real activity).
                 let date = isoFull.date(from: session.lastTimestamp)
                     ?? isoBasic.date(from: session.lastTimestamp)
 
+                // Range filter uses firstTimestamp — a session belongs to the period it STARTED.
+                // This prevents cross-day sessions from inflating shorter ranges and keeps the
+                // popover "Today" stats consistent with the Analytics "today" tab.
+                let filterDate = isoFull.date(from: session.firstTimestamp)
+                    ?? isoBasic.date(from: session.firstTimestamp)
+                    ?? date  // fallback to lastTimestamp if firstTimestamp is empty
+
                 // Always accumulate today's stats before the main range filter so they
                 // remain accurate regardless of which analytics time range is selected.
-                if let d = date, d >= todayStart {
+                // Uses filterDate (firstTimestamp) to match the Analytics "today" tab.
+                if let d = filterDate, d >= todayStart {
                     todaySessionCountLocal += 1
                     todayTokensLocal += session.totalInputTokens + session.totalOutputTokens
                     todayCostLocal += session.estimatedCost
                     todayWorkspaceIdsLocal.insert(workspace.id)
                 }
-
-                // Range filter uses firstTimestamp — a session belongs to the period it STARTED.
-                // This prevents long-running cross-day sessions from inflating shorter ranges:
-                // a session that started May 11 but had its last message on May 12 should appear
-                // in the "7 days" view, not the "Today" view, so token counts differ meaningfully.
-                let filterDate = isoFull.date(from: session.firstTimestamp)
-                    ?? isoBasic.date(from: session.firstTimestamp)
-                    ?? date  // fallback to lastTimestamp if firstTimestamp is empty
 
                 if let from = fromDate, let d = filterDate, d < from { continue }
                 if let to = toDate, let d = filterDate, d >= to { continue }

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-05-12
+### Bug Fixes
+- Fix popover "TODAY" stats mismatching the Analytics "Today" tab. The popover's token/cost totals now use `firstTimestamp` (when the session started) for day-boundary filtering, identical to the range filter used by the main analytics view — so both surfaces always agree.
+
+### Improvements
+- Analytics dashboard now opens on the **Today** range by default instead of 30 days.
+
 ## [1.0.2] - 2026-05-12
 ### Bug Fixes
 - Fix analytics Tokens and Cost showing identical values across all time-range filters (Today / 7 days / 30 days / All). Root cause: a previous fix switched range filtering to use `lastTimestamp`, which caused any session whose last message landed today to be counted in every range — most notably a large session that started yesterday but was still active today inflated the "Today" total to match the 30-day total. Fixed by filtering session inclusion by `firstTimestamp` (when the session *started*) while keeping `lastTimestamp` for Today sidebar stats and daily bar-chart bucketing.
