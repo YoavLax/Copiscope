@@ -187,6 +187,16 @@ private struct WorkspaceGroup: View {
                         .lineLimit(1)
                         .help(workspace.name)
 
+                    if workspace.source == .cli {
+                        Text("CLI")
+                            .font(Typography.micro)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.18))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    }
+
                     Spacer()
 
                     Text("\(sessions.count)")
@@ -246,6 +256,16 @@ private struct SessionRow: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 9))
                             .foregroundStyle(.red)
+                    }
+
+                    if session.source == .cli {
+                        Text("CLI")
+                            .font(Typography.micro)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(isSelected ? AnyShapeStyle(.white.opacity(0.2)) : AnyShapeStyle(Color.orange.opacity(0.18)))
+                            .foregroundStyle(isSelected ? .white.opacity(0.9) : .orange)
+                            .clipShape(Capsule())
                     }
 
                     if let model = session.primaryModel {

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-13
+### New Features
+- **GitHub Copilot CLI support** — Copiscope now tracks sessions from the GitHub Copilot CLI (`gh copilot`) in addition to VS Code. CLI sessions are discovered from `~/.copilot/session-state/`, grouped by project directory, and displayed alongside VS Code sessions in the sidebar.
+- CLI sessions are visually differentiated with an orange **CLI** badge in the sidebar (workspace name and session row) and a prominent orange **"GitHub Copilot CLI Session"** banner at the top of the session detail view.
+- Token usage is extracted from the `session.shutdown` event (`modelMetrics`) in each CLI session's `events.jsonl`, surfacing per-model input/output/cache/reasoning token counts in the breakdown view.
+- Project metadata (name, cwd, timestamps) is parsed from `workspace.yaml` in each CLI session directory.
+- File watcher monitors `~/.copilot/session-state/` for new CLI sessions and live `events.jsonl` updates in real time.
+- Config health checks scan `~/.copilot/copilot-instructions.md` for the CLI equivalent of instructions.
+
 ## [1.0.3] - 2026-05-12
 ### Bug Fixes
 - Fix popover "TODAY" stats mismatching the Analytics "Today" tab. The popover's token/cost totals now use `firstTimestamp` (when the session started) for day-boundary filtering, identical to the range filter used by the main analytics view — so both surfaces always agree.

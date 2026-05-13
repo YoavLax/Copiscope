@@ -126,6 +126,9 @@ actor SessionParser {
                     }
                 }
 
+            case .sessionShutdown:
+                break  // Token data extracted in CLISessionScanner / parseMetadataCLI
+
             case nil:
                 break  // Unknown record type, skip
             }
@@ -245,6 +248,120 @@ actor SessionParser {
 
 enum SessionParserError: Error {
     case fileNotFound
+}
+
+// MARK: - CLI metadata parser
+
+extension SessionParser {
+    /// Lightweight metadata parse for GitHub Copilot CLI `events.jsonl` files.
+    /// Extracts session summary and token totals from the `session.shutdown` record.
+    func parseMetadataCLI(eventsURL: URL, yaml: CLIWorkspaceYAML) throws -> SessionSummary {
+        let workspaceId = "cli::" + yaml.cwd
+        let sessionId = yaml.id
+
+        guard let fh = FileHandle(forReadingAtPath: eventsURL.path) else {
+            throw SessionParserError.fileNotFound
+        }
+        defer { fh.closeFile() }
+
+        var firstTimestamp = yaml.createdAt ?? ""
+        var lastTimestamp = yaml.updatedAt ?? ""
+        var messageCount = 0
+        var turnCount = 0
+        var toolCallCount = 0
+        var title = yaml.name ?? ""
+        var hasError = false
+        var shutdownMetrics: [String: CLIModelMetric] = [:]
+
+        for line in StreamingLineReader(fileHandle: fh) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            guard let lineData = trimmed.data(using: .utf8),
+                  let record = try? decoder.decode(CopilotRecord.self, from: lineData)
+            else { continue }
+
+            if let ts = record.timestamp {
+                if firstTimestamp.isEmpty { firstTimestamp = ts }
+                lastTimestamp = ts
+            }
+
+            switch record.type {
+            case .userMessage:
+                messageCount += 1
+                if title.isEmpty, let content = record.data?.content {
+                    title = String(content.prefix(120))
+                }
+            case .assistantTurnStart:
+                turnCount += 1
+            case .assistantMessage:
+                messageCount += 1
+                if let reqs = record.data?.toolRequests {
+                    toolCallCount += reqs.count
+                }
+            case .toolExecutionComplete:
+                if record.data?.success == false { hasError = true }
+            case .sessionShutdown:
+                if let metrics = record.data?.modelMetrics, !metrics.isEmpty {
+                    shutdownMetrics = metrics
+                }
+            default:
+                break
+            }
+        }
+
+        if title.isEmpty { title = "Session \(sessionId.prefix(8))" }
+
+        // Build token totals from shutdown metrics
+        var totalInputTokens = 0
+        var totalOutputTokens = 0
+        var totalCachedTokens = 0
+        var totalReasoningTokens = 0
+        var breakdown: [ModelUsageBreakdown] = []
+
+        for (model, metric) in shutdownMetrics {
+            let input = metric.usage?.inputTokens ?? 0
+            let output = metric.usage?.outputTokens ?? 0
+            let cached = metric.usage?.cacheReadTokens ?? 0
+            let reasoning = metric.usage?.reasoningTokens ?? 0
+            totalInputTokens += input
+            totalOutputTokens += output
+            totalCachedTokens += cached
+            totalReasoningTokens += reasoning
+            breakdown.append(ModelUsageBreakdown(
+                model: model, vendor: "copilot",
+                inputTokens: input, outputTokens: output,
+                cachedTokens: cached, reasoningTokens: reasoning,
+                estimatedCost: 0, requestCount: metric.requests?.count ?? 1,
+                multiplierCost: 0, turnCount: metric.requests?.count ?? 1
+            ))
+        }
+
+        let primaryModel = breakdown.max(by: { $0.requestCount < $1.requestCount })?.model
+
+        return SessionSummary(
+            id: sessionId,
+            workspaceId: workspaceId,
+            title: title,
+            firstTimestamp: firstTimestamp,
+            lastTimestamp: lastTimestamp,
+            messageCount: messageCount,
+            primaryModel: primaryModel,
+            vendor: primaryModel != nil ? "copilot" : nil,
+            turnCount: turnCount,
+            toolCallCount: toolCallCount,
+            hasError: hasError,
+            observability: .empty,
+            totalInputTokens: totalInputTokens,
+            totalOutputTokens: totalOutputTokens,
+            totalCachedTokens: totalCachedTokens,
+            totalReasoningTokens: totalReasoningTokens,
+            estimatedCost: 0,
+            premiumRequestCount: 0,
+            totalMultiplierCost: 0,
+            modelBreakdown: breakdown,
+            source: .cli
+        )
+    }
 }
 
 // MARK: - chatSessions format parser
@@ -526,7 +643,8 @@ extension SessionParser {
                 vscodeVersion: nil, startTime: nil,
                 content: userText, attachments: nil,
                 messageId: nil, toolRequests: nil, reasoningText: nil,
-                turnId: nil, toolCallId: nil, toolName: nil, arguments: nil, success: nil
+                turnId: nil, toolCallId: nil, toolName: nil, arguments: nil, success: nil,
+                modelMetrics: nil, totalPremiumRequests: nil
             )
             records.append(CopilotRecord(syntheticType: .userMessage, data: userData, timestamp: ts))
 
@@ -568,7 +686,8 @@ extension SessionParser {
                 messageId: nil,
                 toolRequests: toolRequests.isEmpty ? nil : toolRequests,
                 reasoningText: nil,
-                turnId: nil, toolCallId: nil, toolName: nil, arguments: nil, success: nil
+                turnId: nil, toolCallId: nil, toolName: nil, arguments: nil, success: nil,
+                modelMetrics: nil, totalPremiumRequests: nil
             )
             records.append(CopilotRecord(syntheticType: .assistantMessage, data: assistantData, timestamp: ts))
             records.append(CopilotRecord(syntheticType: .assistantTurnEnd, timestamp: ts))

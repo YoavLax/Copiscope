@@ -7,12 +7,17 @@ enum FileChange: Sendable {
     case configChanged(URL)
     case otelDbChanged
     case mustRescan
+    /// CLI `events.jsonl` was updated for the given session UUID
+    case cliSessionUpdated(sessionId: String)
+    /// A new CLI session directory (with events.jsonl) was created
+    case cliSessionCreated(sessionId: String)
 }
 
-/// Watches VS Code workspaceStorage for Copilot transcript changes using FSEvents.
+/// Watches VS Code workspaceStorage and the Copilot CLI session-state dir for changes.
 final class CopilotFileWatcher: @unchecked Sendable {
     private let vscodeUserDir: URL
     private let otelDbPath: String?
+    private let cliStateDir: URL?
     private var stream: FSEventStreamRef?
     private let subject = PassthroughSubject<FileChange, Never>()
     private var debounceTimers: [String: DispatchWorkItem] = [:]
@@ -30,9 +35,10 @@ final class CopilotFileWatcher: @unchecked Sendable {
         subject.eraseToAnyPublisher()
     }
 
-    init(vscodeUserDir: URL, otelDbPath: String? = nil) {
+    init(vscodeUserDir: URL, otelDbPath: String? = nil, cliStateDir: URL? = nil) {
         self.vscodeUserDir = vscodeUserDir
         self.otelDbPath = otelDbPath
+        self.cliStateDir = cliStateDir
     }
 
     @discardableResult
@@ -43,6 +49,11 @@ final class CopilotFileWatcher: @unchecked Sendable {
         if let dbPath = otelDbPath {
             let dbDir = URL(fileURLWithPath: dbPath).deletingLastPathComponent().path
             watchPaths.append(dbDir)
+        }
+
+        // Watch CLI session-state directory if it exists
+        if let cliDir = cliStateDir {
+            watchPaths.append(cliDir.path)
         }
 
         let box = StreamBox(self)
@@ -138,6 +149,20 @@ final class CopilotFileWatcher: @unchecked Sendable {
             guard isModified || isRenamed || isInodeMeta else { return }
             debounceEmit(key: path) {
                 return .otelDbChanged
+            }
+        }
+        // CLI events.jsonl under ~/.copilot/session-state/{uuid}/events.jsonl
+        else if path.hasSuffix("/events.jsonl"),
+                let cliDir = cliStateDir, path.hasPrefix(cliDir.path) {
+            guard isCreated || isModified || isRenamed || isInodeMeta else { return }
+            let sessionId = url.deletingLastPathComponent().lastPathComponent
+            guard !sessionId.isEmpty else { return }
+            debounceEmit(key: path) {
+                if isCreated {
+                    return .cliSessionCreated(sessionId: sessionId)
+                } else {
+                    return .cliSessionUpdated(sessionId: sessionId)
+                }
             }
         }
         // Config files (.instructions.md, .agent.md, .prompt.md, settings.json)

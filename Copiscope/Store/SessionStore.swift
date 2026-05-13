@@ -119,6 +119,8 @@ final class SessionStore {
     private let watcher: CopilotFileWatcher
     private let linterService = ConfigLinterService()
     private var cancellables = Set<AnyCancellable>()
+    private let cliStateDir: URL
+    private let cliScanner: CLISessionScanner
     /// Persistent cache: session ID → token data loaded from disk.
     /// Used as fallback when OTEL DB has pruned old sessions.
     private var persistedTokenCache: [String: PersistedTokenData] = [:]
@@ -172,9 +174,15 @@ final class SessionStore {
             self.otelReader = nil
         }
 
+        // CLI session-state directory
+        let cliStateDir = home.appendingPathComponent(".copilot/session-state")
+        self.cliStateDir = cliStateDir
+        self.cliScanner = CLISessionScanner(cliStateDir: cliStateDir, parser: SessionParser())
+
         self.watcher = CopilotFileWatcher(
             vscodeUserDir: vscodeUserDir,
-            otelDbPath: otelDbPath
+            otelDbPath: otelDbPath,
+            cliStateDir: FileManager.default.fileExists(atPath: cliStateDir.path) ? cliStateDir : nil
         )
 
         self.alertedSecrets = Self.loadAlertedSecrets()
@@ -230,13 +238,18 @@ final class SessionStore {
                 parser: parser,
                 otelReader: otelReader
             )
-            let (scannedWorkspaces, scannedSessions) = await scanner.scan { [weak self] processed, total in
+            async let vscodeScan = scanner.scan { [weak self] processed, total in
                 self?.scanSessionsProcessed = processed
                 self?.scanSessionsTotal = total
             }
+            async let cliScan = cliScanner.scan()
 
-            self.workspaces = scannedWorkspaces
-            self.sessionsByWorkspace = scannedSessions
+            let (vsWorkspaces, vsSessions) = await vscodeScan
+            let (cliWorkspaces, cliSessions) = await cliScan
+
+            self.workspaces = vsWorkspaces + cliWorkspaces
+            self.workspaces.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            self.sessionsByWorkspace = vsSessions.merging(cliSessions) { $0 + $1 }
             // Persist newly-enriched token data, then fill in old sessions from disk cache.
             self.updatePersistedTokenCache()
             self.applyCachedTokenData()
@@ -422,6 +435,54 @@ final class SessionStore {
 
         case .mustRescan:
             rescanAllSessions()
+
+        case .cliSessionCreated(let sessionId), .cliSessionUpdated(let sessionId):
+            let eventsURL = cliStateDir
+                .appendingPathComponent(sessionId)
+                .appendingPathComponent("events.jsonl")
+            let yamlURL = cliStateDir
+                .appendingPathComponent(sessionId)
+                .appendingPathComponent("workspace.yaml")
+            guard let yaml = CLIWorkspaceYAML.parse(from: yamlURL) else { return }
+            let workspaceId = "cli::" + yaml.cwd
+
+            await cache.invalidate(sessionId)
+
+            do {
+                let summary = try await parser.parseMetadataCLI(eventsURL: eventsURL, yaml: yaml)
+
+                var sessions = self.sessionsByWorkspace[workspaceId] ?? []
+                if let idx = sessions.firstIndex(where: { $0.id == sessionId }) {
+                    sessions[idx] = summary
+                } else {
+                    sessions.insert(summary, at: 0)
+                }
+                self.sessionsByWorkspace[workspaceId] = sessions
+
+                if !self.workspaces.contains(where: { $0.id == workspaceId }) {
+                    let cwd = yaml.cwd
+                    let folderName = URL(fileURLWithPath: cwd).lastPathComponent
+                    self.workspaces.append(Workspace(
+                        id: workspaceId,
+                        name: folderName.isEmpty ? cwd : folderName,
+                        path: cwd,
+                        workspacePath: cwd,
+                        sessionCount: sessions.count,
+                        source: .cli
+                    ))
+                    self.workspaces.sort {
+                        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                    }
+                }
+
+                self.checkActiveSession()
+                self.recomputeAnalytics()
+            } catch {
+                NSLog("[Copiscope] Watcher: failed to parse CLI session %@: %@",
+                      sessionId, error.localizedDescription)
+            }
+
+            self.lintResultsValid = false
         }
     }
 
@@ -435,14 +496,20 @@ final class SessionStore {
 
     func rescanAllSessions() {
         Task {
-            let scanner = WorkspaceScanner(
+            let vsScanner = WorkspaceScanner(
                 vscodeUserDir: vscodeUserDir,
                 parser: parser,
                 otelReader: otelReader
             )
-            let (scannedWorkspaces, scannedSessions) = await scanner.scan()
-            self.workspaces = scannedWorkspaces
-            self.sessionsByWorkspace = scannedSessions
+            async let vscodeScan = vsScanner.scan()
+            async let cliScan = cliScanner.scan()
+
+            let (vsWorkspaces, vsSessions) = await vscodeScan
+            let (cliWorkspaces, cliSessions) = await cliScan
+
+            self.workspaces = (vsWorkspaces + cliWorkspaces)
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            self.sessionsByWorkspace = vsSessions.merging(cliSessions) { $0 + $1 }
             self.updatePersistedTokenCache()
             self.applyCachedTokenData()
             self.recomputeAnalytics()
@@ -681,6 +748,27 @@ final class SessionStore {
             return
         }
 
+        // CLI session: load from ~/.copilot/session-state/{id}/events.jsonl
+        if workspaceId.hasPrefix("cli::") {
+            let eventsURL = cliStateDir
+                .appendingPathComponent(id)
+                .appendingPathComponent("events.jsonl")
+            do {
+                let base = try await parser.parse(url: eventsURL, sessionId: id, workspaceId: workspaceId)
+                let parsed = ParsedSession(
+                    id: base.id, workspaceId: base.workspaceId,
+                    records: base.records, toolResultMap: base.toolResultMap,
+                    metadata: base.metadata, tokenData: base.tokenData,
+                    source: .cli
+                )
+                await cache.set(id, value: parsed)
+                self.selectedSession = parsed
+            } catch {
+                NSLog("[Copiscope] Failed to load CLI session %@: %@", id, error.localizedDescription)
+            }
+            return
+        }
+
         let transcriptURL = vscodeUserDir
             .appendingPathComponent("workspaceStorage")
             .appendingPathComponent(workspaceId)
@@ -846,6 +934,22 @@ final class SessionStore {
                     instructions.append(InstructionEntry(label: name, source: .file(name: file), path: url.path, content: content, sizeBytes: bytes, applyTo: extractFrontmatterField("applyTo", from: content)))
                 }
             }
+        }
+
+        // --- CLI: ~/.copilot/copilot-instructions.md ---
+        let cliInstrURL = cliStateDir.deletingLastPathComponent()
+            .appendingPathComponent("copilot-instructions.md")
+        if fm.fileExists(atPath: cliInstrURL.path) {
+            let content = try? String(contentsOf: cliInstrURL, encoding: .utf8)
+            let bytes = (try? fm.attributesOfItem(atPath: cliInstrURL.path)[.size] as? Int) ?? 0
+            instructions.append(InstructionEntry(
+                label: "copilot-instructions (CLI)",
+                source: .user,
+                path: cliInstrURL.path,
+                content: content,
+                sizeBytes: bytes,
+                applyTo: nil
+            ))
         }
 
         // --- Global Copilot storage agents (built-in and org agents) ---

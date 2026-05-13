@@ -10,6 +10,8 @@ enum CopilotRecordType: String, Codable, Sendable {
     case assistantTurnEnd = "assistant.turn_end"
     case toolExecutionStart = "tool.execution_start"
     case toolExecutionComplete = "tool.execution_complete"
+    // CLI-only
+    case sessionShutdown = "session.shutdown"
 }
 
 // MARK: - Top-level transcript JSONL line
@@ -87,12 +89,17 @@ struct CopilotRecordData: Decodable, Sendable {
     let arguments: AnyCodableValue?
     let success: Bool?
 
+    // session.shutdown fields (CLI-only)
+    let modelMetrics: [String: CLIModelMetric]?
+    let totalPremiumRequests: Int?
+
     enum CodingKeys: String, CodingKey {
         case sessionId, version, producer, copilotVersion, vscodeVersion, startTime
         case content, attachments
         case messageId, toolRequests, reasoningText
         case turnId
         case toolCallId, toolName, arguments, success
+        case modelMetrics, totalPremiumRequests
     }
 }
 
@@ -109,4 +116,22 @@ struct CopilotToolRequest: Decodable, Sendable {
     let name: String?
     let arguments: AnyCodableValue?
     let type: String?  // "function"
+}
+
+// MARK: - CLI model metrics (from session.shutdown)
+
+struct CLIModelMetric: Decodable, Sendable {
+    struct Requests: Decodable, Sendable {
+        let count: Int?
+        let cost: Double?
+    }
+    struct Usage: Decodable, Sendable {
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let cacheReadTokens: Int?
+        let cacheWriteTokens: Int?
+        let reasoningTokens: Int?
+    }
+    let requests: Requests?
+    let usage: Usage?
 }

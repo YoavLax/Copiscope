@@ -9,6 +9,19 @@ struct ParsedSession: Sendable {
     let toolResultMap: [String: ToolResultEntry]
     let metadata: SessionMetadata
     let tokenData: SessionTokenData?
+    let source: CopilotSource
+
+    init(id: String, workspaceId: String, records: [CopilotRecord],
+         toolResultMap: [String: ToolResultEntry], metadata: SessionMetadata,
+         tokenData: SessionTokenData?, source: CopilotSource = .vscode) {
+        self.id = id
+        self.workspaceId = workspaceId
+        self.records = records
+        self.toolResultMap = toolResultMap
+        self.metadata = metadata
+        self.tokenData = tokenData
+        self.source = source
+    }
 }
 
 struct ToolResultEntry: Sendable {
@@ -70,6 +83,39 @@ struct SessionSummary: Identifiable, Sendable {
     let premiumRequestCount: Int
     let totalMultiplierCost: Double
     let modelBreakdown: [ModelUsageBreakdown]
+
+    // Source
+    let source: CopilotSource
+
+    init(id: String, workspaceId: String, title: String, firstTimestamp: String,
+         lastTimestamp: String, messageCount: Int, primaryModel: String?,
+         vendor: String?, turnCount: Int, toolCallCount: Int, hasError: Bool,
+         observability: SessionObservability, totalInputTokens: Int,
+         totalOutputTokens: Int, totalCachedTokens: Int, totalReasoningTokens: Int,
+         estimatedCost: Double, premiumRequestCount: Int, totalMultiplierCost: Double,
+         modelBreakdown: [ModelUsageBreakdown], source: CopilotSource = .vscode) {
+        self.id = id
+        self.workspaceId = workspaceId
+        self.title = title
+        self.firstTimestamp = firstTimestamp
+        self.lastTimestamp = lastTimestamp
+        self.messageCount = messageCount
+        self.primaryModel = primaryModel
+        self.vendor = vendor
+        self.turnCount = turnCount
+        self.toolCallCount = toolCallCount
+        self.hasError = hasError
+        self.observability = observability
+        self.totalInputTokens = totalInputTokens
+        self.totalOutputTokens = totalOutputTokens
+        self.totalCachedTokens = totalCachedTokens
+        self.totalReasoningTokens = totalReasoningTokens
+        self.estimatedCost = estimatedCost
+        self.premiumRequestCount = premiumRequestCount
+        self.totalMultiplierCost = totalMultiplierCost
+        self.modelBreakdown = modelBreakdown
+        self.source = source
+    }
 }
 
 struct ModelUsageBreakdown: Sendable {

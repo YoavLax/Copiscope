@@ -117,6 +117,11 @@ private struct SessionDetailTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // CLI source banner
+            if session.source == .cli {
+                CLISessionBanner()
+            }
+
             if showAgentTreeTab {
                 Picker("", selection: $selectedTab) {
                     ForEach(SessionTab.allCases, id: \.self) { tab in
@@ -137,5 +142,32 @@ private struct SessionDetailTabView: View {
                     .id(session.id)
             }
         }
+    }
+}
+
+// MARK: - CLI Session Banner
+
+private struct CLISessionBanner: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 11, weight: .semibold))
+            Text("GitHub Copilot CLI Session")
+                .font(.system(size: 11, weight: .semibold))
+            Spacer()
+            Text("~/.copilot/session-state")
+                .font(.system(size: 10))
+                .opacity(0.7)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .background(
+            LinearGradient(
+                colors: [Color.orange.opacity(0.85), Color.orange.opacity(0.65)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
     }
 }
