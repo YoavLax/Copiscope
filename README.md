@@ -54,6 +54,7 @@ Copiscope reads your local GitHub Copilot session files from VS Code's `workspac
 ```bash
 brew tap YoavLax/copiscope
 brew install --cask copiscope
+xattr -d com.apple.quarantine /Applications/Copiscope.app
 ```
 
 ### Updating
