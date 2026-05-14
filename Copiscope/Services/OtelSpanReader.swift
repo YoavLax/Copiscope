@@ -79,12 +79,18 @@ final class OtelSpanReader: Sendable {
         return querySpans(sql: sql, bindings: [sessionId])
     }
 
-    /// Get aggregated token data for a session
+    /// Get aggregated token data for a session.
+    /// Also returns today-only sub-totals (spans with start_time_ms >= today midnight UTC)
+    /// so callers can report accurate same-day costs for sessions that cross the calendar day boundary.
     func tokenData(forSession sessionId: String) -> SessionTokenData {
         let spans = chatSpans(forSession: sessionId)
         guard !spans.isEmpty else { return .empty(sessionId: sessionId) }
 
+        // Today midnight in milliseconds (local calendar day)
+        let todayStartMs = Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
+
         var totalInput = 0, totalOutput = 0, totalCached = 0, totalReasoning = 0
+        var todayInput = 0, todayOutput = 0, todayCached = 0
         var models = Set<String>()
         var providers = Set<String>()
         var ttfts: [Double] = []
@@ -100,6 +106,12 @@ final class OtelSpanReader: Sendable {
             totalOutput += output
             totalCached += cached
             totalReasoning += reasoning
+
+            if span.startTimeMs >= todayStartMs {
+                todayInput += input
+                todayOutput += output
+                todayCached += cached
+            }
 
             if let m = span.effectiveModel { models.insert(m) }
             if let p = span.providerName { providers.insert(p) }
@@ -135,6 +147,9 @@ final class OtelSpanReader: Sendable {
             totalOutputTokens: totalOutput,
             totalCachedTokens: totalCached,
             totalReasoningTokens: totalReasoning,
+            todayInputTokens: todayInput,
+            todayOutputTokens: todayOutput,
+            todayCachedTokens: todayCached,
             chatSpanCount: spans.count,
             models: Array(models),
             providers: Array(providers),

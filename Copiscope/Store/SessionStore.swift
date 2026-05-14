@@ -111,7 +111,8 @@ final class SessionStore {
     // Appearance
     var appearance: AppAppearance = .system
 
-    private let vscodeUserDir: URL
+    private let vscodeUserDirs: [URL]  // all active VS Code User dirs (stable, Insiders, …)
+    private var vscodeUserDir: URL { vscodeUserDirs[0] }  // primary dir (for settings r/w, OTEL)
     private let parser = SessionParser()
     private let cache = SessionCache()
     private var otelReader: OtelSpanReader?
@@ -124,6 +125,9 @@ final class SessionStore {
     /// Persistent cache: session ID → token data loaded from disk.
     /// Used as fallback when OTEL DB has pruned old sessions.
     private var persistedTokenCache: [String: PersistedTokenData] = [:]
+    /// Per-session today-only tokens from OTEL (spans with start_time_ms >= today midnight).
+    /// Keyed by session ID. Used by recomputeAnalytics() for accurate same-day cost display.
+    private var todayTokensBySession: [String: (input: Int, output: Int, cached: Int)] = [:]
     /// Session IDs touched by the file watcher since the last OTEL DB update.
     /// Used to re-enrich sessions after OTEL spans are written (which lags the JSONL write).
     private var pendingOtelEnrichment: Set<String> = []
@@ -160,16 +164,31 @@ final class SessionStore {
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        self.vscodeUserDir = home
-            .appendingPathComponent("Library/Application Support/Code/User")
+        let fm = FileManager.default
+        let appSupport = home.appendingPathComponent("Library/Application Support")
 
-        // OTEL DB path
-        let otelDbPath = vscodeUserDir
+        // Detect all active VS Code User dirs (stable + Insiders), in preference order
+        let vscodeVariants = ["Code/User", "Code - Insiders/User"]
+        var detected: [URL] = vscodeVariants.compactMap { rel in
+            let url = appSupport.appendingPathComponent(rel)
+            return fm.fileExists(atPath: url.appendingPathComponent("workspaceStorage").path) ? url : nil
+        }
+        if detected.isEmpty {
+            detected = [appSupport.appendingPathComponent("Code/User")]
+        }
+        self.vscodeUserDirs = detected
+
+        // OTEL DB: use first dir that has the database
+        var resolvedOtelDbPath = vscodeUserDirs[0]
             .appendingPathComponent("globalStorage/github.copilot-chat/agent-traces.db")
             .path
-        self.otelDbPath = otelDbPath
-        if FileManager.default.fileExists(atPath: otelDbPath) {
-            self.otelReader = OtelSpanReader(dbPath: otelDbPath)
+        for dir in vscodeUserDirs {
+            let path = dir.appendingPathComponent("globalStorage/github.copilot-chat/agent-traces.db").path
+            if fm.fileExists(atPath: path) { resolvedOtelDbPath = path; break }
+        }
+        self.otelDbPath = resolvedOtelDbPath
+        if fm.fileExists(atPath: resolvedOtelDbPath) {
+            self.otelReader = OtelSpanReader(dbPath: resolvedOtelDbPath)
         } else {
             self.otelReader = nil
         }
@@ -180,9 +199,9 @@ final class SessionStore {
         self.cliScanner = CLISessionScanner(cliStateDir: cliStateDir, parser: SessionParser())
 
         self.watcher = CopilotFileWatcher(
-            vscodeUserDir: vscodeUserDir,
-            otelDbPath: otelDbPath,
-            cliStateDir: FileManager.default.fileExists(atPath: cliStateDir.path) ? cliStateDir : nil
+            vscodeUserDirs: vscodeUserDirs,
+            otelDbPath: resolvedOtelDbPath,
+            cliStateDir: fm.fileExists(atPath: cliStateDir.path) ? cliStateDir : nil
         )
 
         self.alertedSecrets = Self.loadAlertedSecrets()
@@ -233,26 +252,32 @@ final class SessionStore {
 
     private func performInitialScan() {
         Task {
-            let scanner = WorkspaceScanner(
-                vscodeUserDir: vscodeUserDir,
-                parser: parser,
-                otelReader: otelReader
-            )
-            async let vscodeScan = scanner.scan { [weak self] processed, total in
-                self?.scanSessionsProcessed = processed
-                self?.scanSessionsTotal = total
+            var vsWorkspaces: [Workspace] = []
+            var vsSessions: [String: [SessionSummary]] = [:]
+
+            for (i, dir) in vscodeUserDirs.enumerated() {
+                let sc = WorkspaceScanner(vscodeUserDir: dir, parser: parser, otelReader: otelReader)
+                let (ws, ss): ([Workspace], [String: [SessionSummary]])
+                if i == 0 {
+                    (ws, ss) = await sc.scan { [weak self] processed, total in
+                        self?.scanSessionsProcessed = processed
+                        self?.scanSessionsTotal = total
+                    }
+                } else {
+                    (ws, ss) = await sc.scan()
+                }
+                vsWorkspaces += ws
+                vsSessions.merge(ss) { $0 + $1 }
             }
-            async let cliScan = cliScanner.scan()
 
-            let (vsWorkspaces, vsSessions) = await vscodeScan
-            let (cliWorkspaces, cliSessions) = await cliScan
+            let (cliWorkspaces, cliSessions) = await cliScanner.scan()
 
-            self.workspaces = vsWorkspaces + cliWorkspaces
-            self.workspaces.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            self.workspaces = (vsWorkspaces + cliWorkspaces)
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             self.sessionsByWorkspace = vsSessions.merging(cliSessions) { $0 + $1 }
-            // Persist newly-enriched token data, then fill in old sessions from disk cache.
             self.updatePersistedTokenCache()
             self.applyCachedTokenData()
+            self.populateTodayTokens()
             self.isLoading = false
             self.checkActiveSession()
             self.recomputeAnalytics()
@@ -296,6 +321,13 @@ final class SessionStore {
                 // Enrich with OTEL data
                 if let reader = otelReader {
                     let tokenData = reader.tokenData(forSession: sessionId)
+                    if tokenData.todayInputTokens > 0 || tokenData.todayOutputTokens > 0 {
+                        self.todayTokensBySession[sessionId] = (
+                            tokenData.todayInputTokens,
+                            tokenData.todayOutputTokens,
+                            tokenData.todayCachedTokens
+                        )
+                    }
                     if tokenData.chatSpanCount > 0 {
                         let breakdown = tokenData.spanBreakdown.map { b in
                             ModelUsageBreakdown(
@@ -391,6 +423,13 @@ final class SessionStore {
             pendingOtelEnrichment.removeAll()
             for sessionId in ids {
                 let tokenData = reader.tokenData(forSession: sessionId)
+                if tokenData.todayInputTokens > 0 || tokenData.todayOutputTokens > 0 {
+                    todayTokensBySession[sessionId] = (
+                        tokenData.todayInputTokens,
+                        tokenData.todayOutputTokens,
+                        tokenData.todayCachedTokens
+                    )
+                }
                 guard tokenData.chatSpanCount > 0 else { continue }
                 for (wsId, var sessions) in sessionsByWorkspace {
                     guard let idx = sessions.firstIndex(where: { $0.id == sessionId }) else { continue }
@@ -431,6 +470,7 @@ final class SessionStore {
                 }
             }
             updatePersistedTokenCache()
+            populateTodayTokens()
             recomputeAnalytics()
 
         case .mustRescan:
@@ -496,16 +536,17 @@ final class SessionStore {
 
     func rescanAllSessions() {
         Task {
-            let vsScanner = WorkspaceScanner(
-                vscodeUserDir: vscodeUserDir,
-                parser: parser,
-                otelReader: otelReader
-            )
-            async let vscodeScan = vsScanner.scan()
-            async let cliScan = cliScanner.scan()
+            var vsWorkspaces: [Workspace] = []
+            var vsSessions: [String: [SessionSummary]] = [:]
 
-            let (vsWorkspaces, vsSessions) = await vscodeScan
-            let (cliWorkspaces, cliSessions) = await cliScan
+            for dir in vscodeUserDirs {
+                let sc = WorkspaceScanner(vscodeUserDir: dir, parser: parser, otelReader: otelReader)
+                let (ws, ss) = await sc.scan()
+                vsWorkspaces += ws
+                vsSessions.merge(ss) { $0 + $1 }
+            }
+
+            let (cliWorkspaces, cliSessions) = await cliScanner.scan()
 
             self.workspaces = (vsWorkspaces + cliWorkspaces)
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -554,6 +595,28 @@ final class SessionStore {
     }
 
     /// Fill in token data from disk cache for sessions the OTEL DB no longer covers.
+    /// Queries OTEL for today-only token sub-totals for sessions active today.
+    /// Only runs against sessions whose lastTimestamp is today — typically 1–3 sessions.
+    private func populateTodayTokens() {
+        guard let reader = otelReader else { return }
+        let isoFull = ISO8601DateFormatter()
+        isoFull.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoBasic = ISO8601DateFormatter()
+        let todayStart = Calendar.current.startOfDay(for: Date())
+
+        for sessions in sessionsByWorkspace.values {
+            for session in sessions {
+                let lastDate = isoFull.date(from: session.lastTimestamp)
+                    ?? isoBasic.date(from: session.lastTimestamp)
+                guard let d = lastDate, d >= todayStart else { continue }
+                let td = reader.tokenData(forSession: session.id)
+                if td.todayInputTokens > 0 || td.todayOutputTokens > 0 {
+                    todayTokensBySession[session.id] = (td.todayInputTokens, td.todayOutputTokens, td.todayCachedTokens)
+                }
+            }
+        }
+    }
+
     private func applyCachedTokenData() {
         for (wsId, var sessions) in sessionsByWorkspace {
             var changed = false
@@ -623,30 +686,62 @@ final class SessionStore {
         for workspace in workspaces {
             let sessions = sessionsByWorkspace[workspace.id] ?? []
             for session in sessions {
-                // lastTimestamp: used for daily bar-chart bucketing only
-                // (shows when a session was last active, so charts reflect real activity).
+                // lastTimestamp: used for daily bar-chart bucketing and "today" activity check.
                 let date = isoFull.date(from: session.lastTimestamp)
                     ?? isoBasic.date(from: session.lastTimestamp)
 
                 // Range filter uses firstTimestamp — a session belongs to the period it STARTED.
-                // This prevents cross-day sessions from inflating shorter ranges and keeps the
-                // popover "Today" stats consistent with the Analytics "today" tab.
+                // This prevents cross-day sessions from inflating shorter ranges.
                 let filterDate = isoFull.date(from: session.firstTimestamp)
                     ?? isoBasic.date(from: session.firstTimestamp)
                     ?? date  // fallback to lastTimestamp if firstTimestamp is empty
 
-                // Always accumulate today's stats before the main range filter so they
-                // remain accurate regardless of which analytics time range is selected.
-                // Uses filterDate (firstTimestamp) to match the Analytics "today" tab.
-                if let d = filterDate, d >= todayStart {
+                // "Today" stats: use per-span today sub-totals when available (accurate cost for
+                // sessions that cross the calendar day boundary). Fall back to full session total.
+                if let d = date, d >= todayStart {
                     todaySessionCountLocal += 1
-                    todayTokensLocal += session.totalInputTokens + session.totalOutputTokens
-                    todayCostLocal += session.estimatedCost
+                    if let todayToks = todayTokensBySession[session.id] {
+                        todayTokensLocal += todayToks.input + todayToks.output
+                        // Re-estimate cost from today's token split using the session's model breakdown
+                        let todayCost = session.modelBreakdown.isEmpty
+                            ? estimateCostFromTokens(
+                                model: session.primaryModel ?? "unknown",
+                                inputTokens: todayToks.input,
+                                outputTokens: todayToks.output,
+                                cachedTokens: todayToks.cached
+                              )
+                            : session.modelBreakdown.reduce(0.0) { acc, b in
+                                // Apportion cost by output token ratio (best proxy available without per-span breakdown)
+                                let sessionOut = session.totalOutputTokens > 0 ? session.totalOutputTokens : 1
+                                let ratio = Double(b.outputTokens) / Double(sessionOut)
+                                let todayModelOut = Int(Double(todayToks.output) * ratio)
+                                let todayModelIn  = Int(Double(todayToks.input) * ratio)
+                                let todayModelCached = Int(Double(todayToks.cached) * ratio)
+                                return acc + estimateCostFromTokens(
+                                    model: b.model,
+                                    inputTokens: todayModelIn,
+                                    outputTokens: todayModelOut,
+                                    cachedTokens: todayModelCached
+                                )
+                              }
+                        todayCostLocal += todayCost
+                    } else {
+                        todayTokensLocal += session.totalInputTokens + session.totalOutputTokens
+                        todayCostLocal += session.estimatedCost
+                    }
                     todayWorkspaceIdsLocal.insert(workspace.id)
                 }
 
-                if let from = fromDate, let d = filterDate, d < from { continue }
-                if let to = toDate, let d = filterDate, d >= to { continue }
+                if let from = fromDate, let to = toDate {
+                    // Custom / multi-day ranges: use firstTimestamp (session belongs to period it started)
+                    guard let d = filterDate, d >= from, d < to else { continue }
+                } else if let from = fromDate {
+                    // "Today" / "7d" / "30d": for today's range use lastTimestamp so
+                    // sessions active today (even if started yesterday) are included.
+                    // For multi-day ranges keep firstTimestamp to avoid double-counting.
+                    let rangeDate = (analyticsTimeRange == .today) ? date : filterDate
+                    guard let d = rangeDate, d >= from else { continue }
+                }
 
                 totalSessions += 1
                 totalMessages += session.messageCount
@@ -769,19 +864,30 @@ final class SessionStore {
             return
         }
 
-        let transcriptURL = vscodeUserDir
-            .appendingPathComponent("workspaceStorage")
-            .appendingPathComponent(workspaceId)
-            .appendingPathComponent("GitHub.copilot-chat/transcripts/\(id).jsonl")
-
-        let chatSessionURL = vscodeUserDir
-            .appendingPathComponent("workspaceStorage")
-            .appendingPathComponent(workspaceId)
-            .appendingPathComponent("chatSessions/\(id).jsonl")
-
         let fm = FileManager.default
-        let useTranscript = fm.fileExists(atPath: transcriptURL.path)
-        let fileURL = useTranscript ? transcriptURL : chatSessionURL
+        var useTranscript = false
+        var fileURL: URL? = nil
+
+        // Search across all VS Code dirs (stable, Insiders, etc.)
+        for dir in vscodeUserDirs {
+            let t = dir
+                .appendingPathComponent("workspaceStorage")
+                .appendingPathComponent(workspaceId)
+                .appendingPathComponent("GitHub.copilot-chat/transcripts/\(id).jsonl")
+            let c = dir
+                .appendingPathComponent("workspaceStorage")
+                .appendingPathComponent(workspaceId)
+                .appendingPathComponent("chatSessions/\(id).jsonl")
+            if fm.fileExists(atPath: t.path) {
+                fileURL = t; useTranscript = true; break
+            } else if fm.fileExists(atPath: c.path) {
+                fileURL = c; useTranscript = false; break
+            }
+        }
+        guard let fileURL else {
+            NSLog("[Copiscope] Session file not found for %@ in any VS Code dir", id)
+            return
+        }
 
         do {
             var parsed: ParsedSession
@@ -916,8 +1022,26 @@ final class SessionStore {
 
         // --- Load VS Code settings ---
         vscodeSettings = loadVSCodeSettings()
+
+        // --- CLI: ~/.copilot/copilot-instructions.md ---
+        let cliInstrURL = cliStateDir.deletingLastPathComponent()
+            .appendingPathComponent("copilot-instructions.md")
+        if fm.fileExists(atPath: cliInstrURL.path) {
+            let content = try? String(contentsOf: cliInstrURL, encoding: .utf8)
+            let bytes = (try? fm.attributesOfItem(atPath: cliInstrURL.path)[.size] as? Int) ?? 0
+            instructions.append(InstructionEntry(
+                label: "copilot-instructions (CLI)",
+                source: .user,
+                path: cliInstrURL.path,
+                content: content,
+                sizeBytes: bytes,
+                applyTo: nil
+            ))
+        }
+
+        for vsDir in vscodeUserDirs {
         // --- User-level prompts directory ---
-        let userPromptsDir = vscodeUserDir.appendingPathComponent("prompts")
+        let userPromptsDir = vsDir.appendingPathComponent("prompts")
         if let files = try? fm.contentsOfDirectory(atPath: userPromptsDir.path) {
             for file in files {
                 let url = userPromptsDir.appendingPathComponent(file)
@@ -936,24 +1060,8 @@ final class SessionStore {
             }
         }
 
-        // --- CLI: ~/.copilot/copilot-instructions.md ---
-        let cliInstrURL = cliStateDir.deletingLastPathComponent()
-            .appendingPathComponent("copilot-instructions.md")
-        if fm.fileExists(atPath: cliInstrURL.path) {
-            let content = try? String(contentsOf: cliInstrURL, encoding: .utf8)
-            let bytes = (try? fm.attributesOfItem(atPath: cliInstrURL.path)[.size] as? Int) ?? 0
-            instructions.append(InstructionEntry(
-                label: "copilot-instructions (CLI)",
-                source: .user,
-                path: cliInstrURL.path,
-                content: content,
-                sizeBytes: bytes,
-                applyTo: nil
-            ))
-        }
-
         // --- Global Copilot storage agents (built-in and org agents) ---
-        let globalCopilotDir = vscodeUserDir
+        let globalCopilotDir = vsDir
             .appendingPathComponent("globalStorage/github.copilot-chat")
         for subdir in ["ask-agent", "plan-agent", "explore-agent"] {
             let url = globalCopilotDir.appendingPathComponent(subdir)
@@ -969,7 +1077,7 @@ final class SessionStore {
         }
 
         // --- User-level MCP config ---
-        let userMcpURL = vscodeUserDir.appendingPathComponent("mcp.json")
+        let userMcpURL = vsDir.appendingPathComponent("mcp.json")
         if let data = fm.contents(atPath: userMcpURL.path),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let servers = json["servers"] as? [String: Any] {
@@ -988,7 +1096,7 @@ final class SessionStore {
         }
 
         // --- Per-workspace scan (recursive walk) ---
-        let workspaceStorageDir = vscodeUserDir.appendingPathComponent("workspaceStorage")
+        let workspaceStorageDir = vsDir.appendingPathComponent("workspaceStorage")
         if let hashDirs = try? fm.contentsOfDirectory(atPath: workspaceStorageDir.path) {
             for hashDir in hashDirs {
                 let hashPath = workspaceStorageDir.appendingPathComponent(hashDir)
@@ -1001,6 +1109,7 @@ final class SessionStore {
                     prompts: &prompts, mcpServers: &mcpServers)
             }
         }
+        } // end for vsDir in vscodeUserDirs
 
         // Deduplicate by path
         self.instructions = dedupe(instructions, by: { $0.path ?? $0.label })
@@ -1241,9 +1350,10 @@ final class SessionStore {
             summaries.map { (workspaceId: wsId, summary: $0) }
         }
 
-        // Collect chatSessions directories for secret scanning
-        let wsStorageDir = vscodeUserDir.appendingPathComponent("workspaceStorage")
+        // Collect chatSessions directories for secret scanning (all VS Code dirs)
         var chatSessionDirs: [(workspaceId: String, url: URL)] = []
+        for vsDir in vscodeUserDirs {
+        let wsStorageDir = vsDir.appendingPathComponent("workspaceStorage")
         if let hashDirs = try? FileManager.default.contentsOfDirectory(atPath: wsStorageDir.path) {
             for hashDir in hashDirs {
                 let hashPath = wsStorageDir.appendingPathComponent(hashDir)
@@ -1253,6 +1363,7 @@ final class SessionStore {
                 }
             }
         }
+        } // end for vsDir in vscodeUserDirs
 
         let input = ConfigLinterService.Input(
             sessions: sessions,

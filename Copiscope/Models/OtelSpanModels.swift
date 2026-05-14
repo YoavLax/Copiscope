@@ -53,6 +53,11 @@ struct SessionTokenData: Sendable {
     let totalOutputTokens: Int
     let totalCachedTokens: Int
     let totalReasoningTokens: Int
+    /// Tokens from spans that started today (midnight to now). Used for accurate
+    /// same-day cost reporting on sessions that cross the calendar day boundary.
+    let todayInputTokens: Int
+    let todayOutputTokens: Int
+    let todayCachedTokens: Int
     let chatSpanCount: Int
     let models: [String]
     let providers: [String]
@@ -64,6 +69,7 @@ struct SessionTokenData: Sendable {
             sessionId: sessionId,
             totalInputTokens: 0, totalOutputTokens: 0,
             totalCachedTokens: 0, totalReasoningTokens: 0,
+            todayInputTokens: 0, todayOutputTokens: 0, todayCachedTokens: 0,
             chatSpanCount: 0, models: [], providers: [],
             medianTtftMs: nil, spanBreakdown: []
         )

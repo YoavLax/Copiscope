@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-05-14
+### Bug Fixes
+- **Fix zero sessions shown on days after a session starts** — "Today" filter now uses `lastTimestamp` (when the session was last active) instead of `firstTimestamp`, so a session that started yesterday but is still active today correctly appears under Today.
+- **Fix inflated Today cost for cross-midnight sessions** — previously the full accumulated cost of a multi-day session was attributed to Today. Today cost is now computed from OTEL spans that started after midnight, so only today's token usage is counted.
+
+### Improvements
+- **VS Code Insiders support** — Copiscope now auto-detects both `Code/User` and `Code - Insiders/User` workspace directories and indexes sessions from both. Both paths are scanned at startup and monitored via file watcher.
+
 ## [1.1.0] - 2026-05-13
 ### New Features
 - **GitHub Copilot CLI support** — Copiscope now tracks sessions from the GitHub Copilot CLI (`gh copilot`) in addition to VS Code. CLI sessions are discovered from `~/.copilot/session-state/`, grouped by project directory, and displayed alongside VS Code sessions in the sidebar.

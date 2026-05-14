@@ -15,7 +15,7 @@ enum FileChange: Sendable {
 
 /// Watches VS Code workspaceStorage and the Copilot CLI session-state dir for changes.
 final class CopilotFileWatcher: @unchecked Sendable {
-    private let vscodeUserDir: URL
+    private let vscodeUserDirs: [URL]
     private let otelDbPath: String?
     private let cliStateDir: URL?
     private var stream: FSEventStreamRef?
@@ -35,15 +35,15 @@ final class CopilotFileWatcher: @unchecked Sendable {
         subject.eraseToAnyPublisher()
     }
 
-    init(vscodeUserDir: URL, otelDbPath: String? = nil, cliStateDir: URL? = nil) {
-        self.vscodeUserDir = vscodeUserDir
+    init(vscodeUserDirs: [URL], otelDbPath: String? = nil, cliStateDir: URL? = nil) {
+        self.vscodeUserDirs = vscodeUserDirs
         self.otelDbPath = otelDbPath
         self.cliStateDir = cliStateDir
     }
 
     @discardableResult
     func start() -> Bool {
-        var watchPaths = [vscodeUserDir.appendingPathComponent("workspaceStorage").path]
+        var watchPaths = vscodeUserDirs.map { $0.appendingPathComponent("workspaceStorage").path }
 
         // Also watch the OTEL DB directory for changes
         if let dbPath = otelDbPath {
