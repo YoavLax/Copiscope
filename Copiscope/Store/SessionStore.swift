@@ -193,15 +193,16 @@ final class SessionStore {
             self.otelReader = nil
         }
 
-        // CLI session-state directory
+        // CLI session-state directory — create eagerly so the file watcher always has it
         let cliStateDir = home.appendingPathComponent(".copilot/session-state")
+        try? fm.createDirectory(at: cliStateDir, withIntermediateDirectories: true)
         self.cliStateDir = cliStateDir
         self.cliScanner = CLISessionScanner(cliStateDir: cliStateDir, parser: SessionParser())
 
         self.watcher = CopilotFileWatcher(
             vscodeUserDirs: vscodeUserDirs,
             otelDbPath: resolvedOtelDbPath,
-            cliStateDir: fm.fileExists(atPath: cliStateDir.path) ? cliStateDir : nil
+            cliStateDir: cliStateDir
         )
 
         self.alertedSecrets = Self.loadAlertedSecrets()
@@ -384,11 +385,23 @@ final class SessionStore {
                 self.sessionsByWorkspace[workspaceId] = sessions
 
                 if !self.workspaces.contains(where: { $0.id == workspaceId }) {
+                    // Resolve workspace name from workspace.json (two levels up from chatSessions/transcripts dir)
+                    let hashDir = url.deletingLastPathComponent().deletingLastPathComponent()
+                    let fm2 = FileManager.default
+                    var resolvedName = workspaceId
+                    var resolvedWorkspacePath: String? = nil
+                    if let wjData = fm2.contents(atPath: hashDir.appendingPathComponent("workspace.json").path),
+                       let wjJson = try? JSONSerialization.jsonObject(with: wjData) as? [String: Any],
+                       let folder = wjJson["folder"] as? String {
+                        let folderURL = URL(string: folder) ?? URL(fileURLWithPath: folder)
+                        resolvedName = folderURL.lastPathComponent
+                        resolvedWorkspacePath = folderURL.path
+                    }
                     let workspace = Workspace(
                         id: workspaceId,
-                        name: workspaceId,
-                        path: url.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path,
-                        workspacePath: nil,
+                        name: resolvedName,
+                        path: hashDir.deletingLastPathComponent().path,
+                        workspacePath: resolvedWorkspacePath,
                         sessionCount: sessions.count
                     )
                     self.workspaces.append(workspace)

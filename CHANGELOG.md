@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-05-14
+### Bug Fixes
+- **Fix CLI sessions not appearing when `~/.copilot/session-state/` didn't exist at launch** — Copiscope now eagerly creates the directory at startup and watches `~/.copilot/` (parent) so sessions are detected even if the CLI was never run before.
+- **Fix CLI workspace showing hash instead of name** — new workspaces detected via file watcher now read `workspace.json` to resolve the real workspace name instead of displaying the storage hash.
+- **Fix CLI session cost always showing $0** — token metrics from `session.shutdown` are now passed through `estimateCostFromTokens` (including cache-write tokens), so completed CLI sessions show accurate cost and token breakdown.
+
+### Improvements
+- **`copilot/auto` model pricing** — the Auto model is now priced at Claude Sonnet rates minus 10% (output $13.50/M, input $2.70/M), matching GitHub's advertised discount.
+
 ## [1.1.1] - 2026-05-14
 ### Bug Fixes
 - **Fix zero sessions shown on days after a session starts** — "Today" filter now uses `lastTimestamp` (when the session was last active) instead of `firstTimestamp`, so a session that started yesterday but is still active today correctly appears under Today.

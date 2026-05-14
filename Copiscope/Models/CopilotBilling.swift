@@ -79,6 +79,10 @@ struct PricingTables {
     // Source: https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
     // 1 AI credit = $0.01 USD; prices in the table are in AI credits per MTok = USD per MTok.
     static let byModel: [String: TokenPricing] = [
+        // copilot/auto — GitHub's automatic model selector. Actual model is resolved server-side.
+        // Without OTEL data we cannot know which model was used, so we apply claude-sonnet pricing
+        // at a 10% discount as a reasonable proxy (auto typically routes to sonnet-class models).
+        "auto":              TokenPricing(input: 2.70,  output: 13.50, cacheRead: 0.27,  cacheWrite: 3.375),
         // Anthropic — Copilot-proxied IDs (e.g. "copilot/claude-sonnet-4.6")
         "claude-opus-4.7":   TokenPricing(input: 5.00,  output: 25.00, cacheRead: 0.50,  cacheWrite: 6.25),
         "claude-opus-4.6":   TokenPricing(input: 5.00,  output: 25.00, cacheRead: 0.50,  cacheWrite: 6.25),

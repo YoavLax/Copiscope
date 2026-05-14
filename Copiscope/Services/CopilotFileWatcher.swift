@@ -51,9 +51,11 @@ final class CopilotFileWatcher: @unchecked Sendable {
             watchPaths.append(dbDir)
         }
 
-        // Watch CLI session-state directory if it exists
+        // Watch ~/.copilot/ (parent of session-state) so we catch directory creation
+        // when the CLI is run for the first time after Copiscope launches.
         if let cliDir = cliStateDir {
-            watchPaths.append(cliDir.path)
+            let parentDir = cliDir.deletingLastPathComponent()
+            watchPaths.append(parentDir.path)
         }
 
         let box = StreamBox(self)

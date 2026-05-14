@@ -316,26 +316,39 @@ extension SessionParser {
         var totalOutputTokens = 0
         var totalCachedTokens = 0
         var totalReasoningTokens = 0
+        var totalPremiumRequests = 0
         var breakdown: [ModelUsageBreakdown] = []
 
         for (model, metric) in shutdownMetrics {
             let input = metric.usage?.inputTokens ?? 0
             let output = metric.usage?.outputTokens ?? 0
             let cached = metric.usage?.cacheReadTokens ?? 0
+            let cacheWrite = metric.usage?.cacheWriteTokens ?? 0
             let reasoning = metric.usage?.reasoningTokens ?? 0
+            let reqCount = metric.requests?.count ?? 1
+            let premiumCost = Int(metric.requests?.cost ?? 0)
             totalInputTokens += input
             totalOutputTokens += output
             totalCachedTokens += cached
             totalReasoningTokens += reasoning
+            totalPremiumRequests += premiumCost
+            let cost = estimateCostFromTokens(
+                model: "copilot/" + model,
+                inputTokens: input,
+                outputTokens: output,
+                cachedTokens: cached,
+                cacheCreationTokens: cacheWrite
+            )
             breakdown.append(ModelUsageBreakdown(
                 model: model, vendor: "copilot",
                 inputTokens: input, outputTokens: output,
                 cachedTokens: cached, reasoningTokens: reasoning,
-                estimatedCost: 0, requestCount: metric.requests?.count ?? 1,
-                multiplierCost: 0, turnCount: metric.requests?.count ?? 1
+                estimatedCost: cost, requestCount: reqCount,
+                multiplierCost: 0, turnCount: reqCount
             ))
         }
 
+        let estimatedCost = breakdown.reduce(0) { $0 + $1.estimatedCost }
         let primaryModel = breakdown.max(by: { $0.requestCount < $1.requestCount })?.model
 
         return SessionSummary(
@@ -355,8 +368,8 @@ extension SessionParser {
             totalOutputTokens: totalOutputTokens,
             totalCachedTokens: totalCachedTokens,
             totalReasoningTokens: totalReasoningTokens,
-            estimatedCost: 0,
-            premiumRequestCount: 0,
+            estimatedCost: estimatedCost,
+            premiumRequestCount: totalPremiumRequests,
             totalMultiplierCost: 0,
             modelBreakdown: breakdown,
             source: .cli
