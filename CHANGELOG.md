@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-05-17
+### Bug Fixes
+- **Fix analytics workspace filter not applying** — selecting a specific workspace in the Analytics sidebar now correctly filters all metrics (sessions, tokens, cost, charts) to that workspace only. Today stats used for sidebar activity badges remain unfiltered.
+- **Fix Cache, Models, and Latency analytics tabs showing empty** — all three tabs now compute and display real data from session summaries: cache hit ratio and cost savings, per-model cost/turn efficiency, daily model cost breakdown, and turn latency distribution histogram with p50/p95/p99 percentiles.
+
 ## [1.1.2] - 2026-05-14
 ### Bug Fixes
 - **Fix CLI sessions not appearing when `~/.copilot/session-state/` didn't exist at launch** — Copiscope now eagerly creates the directory at startup and watches `~/.copilot/` (parent) so sessions are detected even if the CLI was never run before.
