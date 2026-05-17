@@ -690,6 +690,24 @@ final class SessionStore {
         var workspaceCostMap: [String: WorkspaceCost] = [:]
         var modelMap: [String: ModelUsage] = [:]
 
+        // Cache analytics accumulators
+        var totalCacheReadTokens = 0
+        var totalCacheSavings = 0.0
+        var totalHypotheticalCost = 0.0
+        var sessionCacheEfficiencies: [SessionCacheEfficiency] = []
+        var modelCacheReadMap: [String: Int] = [:]
+        var modelCacheSavingsMap: [String: Double] = [:]
+        var dailyCacheReadMap: [String: Int] = [:]
+        var dailyInputTokenMap: [String: Int] = [:]
+
+        // Model cost / daily-model-cost accumulators
+        var modelCostMap: [String: Double] = [:]
+        var dailyModelCostAccum: [String: [String: Double]] = [:]
+
+        // Latency accumulators (session-level medians used as proxy for turn distributions)
+        var sessionMedianDurations: [Double] = []
+        var sessionMaxDurations: [(sessionId: String, title: String, maxMs: Double, ttftMs: Double?, model: String?)] = []
+
         let todayStart = Calendar.current.startOfDay(for: Date())
         var todaySessionCountLocal = 0
         var todayTokensLocal = 0
@@ -744,6 +762,11 @@ final class SessionStore {
                     }
                     todayWorkspaceIdsLocal.insert(workspace.id)
                 }
+
+                // Workspace filter: if the user has selected a specific workspace,
+                // skip sessions that don't belong to it. Today-stats above are
+                // intentionally kept unfiltered (they power sidebar activity badges).
+                if let selectedId = selectedWorkspaceId, workspace.id != selectedId { continue }
 
                 if let from = fromDate, let to = toDate {
                     // Custom / multi-day ranges: use firstTimestamp (session belongs to period it started)
@@ -809,6 +832,9 @@ final class SessionStore {
                     modelMap[model]!.totalInputTokens += session.totalInputTokens
                     modelMap[model]!.totalOutputTokens += session.totalOutputTokens
                     modelMap[model]!.totalCachedTokens += session.totalCachedTokens
+                    // Model cost
+                    modelCostMap[model, default: 0] += session.estimatedCost
+                    dailyModelCostAccum[dayKey, default: [:]][model, default: 0] += session.estimatedCost
                 } else {
                     for b in session.modelBreakdown {
                         if modelMap[b.model] == nil {
@@ -821,9 +847,172 @@ final class SessionStore {
                         modelMap[b.model]!.totalInputTokens += b.inputTokens
                         modelMap[b.model]!.totalOutputTokens += b.outputTokens
                         modelMap[b.model]!.totalCachedTokens += b.cachedTokens
+                        // Model cost
+                        modelCostMap[b.model, default: 0] += b.estimatedCost
+                        dailyModelCostAccum[dayKey, default: [:]][b.model, default: 0] += b.estimatedCost
                     }
                 }
+
+                // Cache analytics aggregation
+                let cacheRead = session.totalCachedTokens
+                totalCacheReadTokens += cacheRead
+                dailyCacheReadMap[dayKey, default: 0] += cacheRead
+                dailyInputTokenMap[dayKey, default: 0] += session.totalInputTokens
+
+                // Cost savings: difference between paying full input price vs cached price
+                let sessionSavings: Double
+                if session.modelBreakdown.isEmpty {
+                    let p = PricingTables.pricing(for: session.primaryModel)
+                    sessionSavings = Double(cacheRead) / 1e6 * (p.input - p.cacheRead)
+                    totalHypotheticalCost += Double(session.totalInputTokens) / 1e6 * p.input
+                                          + Double(session.totalOutputTokens) / 1e6 * p.output
+                    if cacheRead > 0 {
+                        modelCacheReadMap[session.primaryModel ?? "unknown", default: 0] += cacheRead
+                        modelCacheSavingsMap[session.primaryModel ?? "unknown", default: 0] += max(0, sessionSavings)
+                    }
+                } else {
+                    var bSavingsTotal = 0.0
+                    for b in session.modelBreakdown {
+                        let bp = PricingTables.pricing(for: b.model)
+                        let bSavings = Double(b.cachedTokens) / 1e6 * (bp.input - bp.cacheRead)
+                        bSavingsTotal += bSavings
+                        totalHypotheticalCost += Double(b.inputTokens) / 1e6 * bp.input
+                                              + Double(b.outputTokens) / 1e6 * bp.output
+                        if b.cachedTokens > 0 {
+                            modelCacheReadMap[b.model, default: 0] += b.cachedTokens
+                            modelCacheSavingsMap[b.model, default: 0] += max(0, bSavings)
+                        }
+                    }
+                    sessionSavings = bSavingsTotal
+                }
+                totalCacheSavings += max(0, sessionSavings)
+
+                if cacheRead > 0 {
+                    let hitRatioForSession = session.totalInputTokens > 0
+                        ? Double(cacheRead) / Double(session.totalInputTokens)
+                        : 0
+                    sessionCacheEfficiencies.append(SessionCacheEfficiency(
+                        sessionId: session.id,
+                        sessionTitle: session.title,
+                        hitRatio: hitRatioForSession,
+                        cacheReadTokens: cacheRead,
+                        savingsAmount: max(0, sessionSavings),
+                        primaryModel: session.primaryModel
+                    ))
+                }
+
+                // Latency aggregation (session-level proxy — individual turns not in summaries)
+                if let med = session.observability.medianTurnDurationMs {
+                    sessionMedianDurations.append(med)
+                }
+                if let maxDur = session.observability.maxTurnDurationMs {
+                    sessionMaxDurations.append((
+                        sessionId: session.id,
+                        title: session.title,
+                        maxMs: maxDur,
+                        ttftMs: session.observability.medianTtftMs,
+                        model: session.primaryModel
+                    ))
+                }
             }
+        }
+
+        // MARK: Build derived analytics
+
+        // --- Cache ---
+        let overallHitRatio = totalInputTokens > 0
+            ? Double(totalCacheReadTokens) / Double(totalInputTokens) : 0
+        let avgReuseRate = totalSessions > 0
+            ? Double(totalCacheReadTokens) / Double(totalSessions) / 1000.0 : 0
+        let dailyHitRatios: [(date: String, ratio: Double)] = dailyCacheReadMap.keys.sorted().map { day in
+            let input = max(1, dailyInputTokenMap[day] ?? 1)
+            return (date: day, ratio: Double(dailyCacheReadMap[day] ?? 0) / Double(input))
+        }
+        let modelSavingsList: [ModelCacheSavings] = modelCacheReadMap.keys.sorted().compactMap { m in
+            guard let reads = modelCacheReadMap[m], reads > 0 else { return nil }
+            let bp = PricingTables.pricing(for: m)
+            return ModelCacheSavings(
+                model: m,
+                cacheReadTokens: reads,
+                savingsPerMTok: bp.input - bp.cacheRead,
+                totalSavings: modelCacheSavingsMap[m] ?? 0
+            )
+        }
+        let builtCacheAnalytics = CacheAnalytics(
+            hitRatio: overallHitRatio,
+            totalCacheReadTokens: totalCacheReadTokens,
+            totalCacheWriteTokens: 0,
+            costSavings: totalCacheSavings,
+            hypotheticalUncachedCost: totalHypotheticalCost,
+            actualCost: totalCost,
+            averageReuseRate: avgReuseRate,
+            cacheBustingDays: [],
+            totalCache5mTokens: 0,
+            totalCache1hTokens: 0,
+            tierCostBreakdown: .empty,
+            dailyHitRatio: dailyHitRatios,
+            sessionEfficiency: sessionCacheEfficiencies.sorted { $0.savingsAmount > $1.savingsAmount },
+            modelSavings: modelSavingsList.sorted { $0.totalSavings > $1.totalSavings }
+        )
+
+        // --- Model Efficiency ---
+        let builtModelEfficiency: [ModelEfficiencyRow] = modelMap.values.map { m in
+            let cost = modelCostMap[m.model] ?? 0
+            return ModelEfficiencyRow(
+                model: m.model,
+                vendor: m.vendor,
+                turnCount: m.turnCount,
+                totalOutputTokens: m.totalOutputTokens,
+                avgOutputPerTurn: m.turnCount > 0 ? m.totalOutputTokens / m.turnCount : 0,
+                totalCost: cost,
+                costPerTurn: m.turnCount > 0 ? cost / Double(m.turnCount) : 0,
+                percentOfTotalCost: totalCost > 0 ? cost / totalCost * 100 : 0,
+                avgTtftMs: nil
+            )
+        }.sorted { $0.totalCost > $1.totalCost }
+
+        var builtDailyModelCost: [DailyModelCost] = []
+        for (day, modelCosts) in dailyModelCostAccum {
+            for (model, cost) in modelCosts where cost > 0 {
+                builtDailyModelCost.append(DailyModelCost(date: day, model: model, cost: cost))
+            }
+        }
+        builtDailyModelCost.sort { $0.date < $1.date }
+
+        // --- Latency ---
+        let builtLatency: LatencyAnalytics
+        if sessionMedianDurations.isEmpty {
+            builtLatency = .empty
+        } else {
+            let sorted = sessionMedianDurations.sorted()
+            let median = analyticsPercentile(sorted, 0.50)
+            let p95    = analyticsPercentile(sorted, 0.95)
+            let p99    = analyticsPercentile(sorted, 0.99)
+            let histogram = analyticsLatencyHistogram(sorted)
+            let slowest = sessionMaxDurations
+                .sorted { $0.maxMs > $1.maxMs }
+                .prefix(10)
+                .map { e in
+                    SlowTurnEntry(
+                        id: e.sessionId,
+                        sessionId: e.sessionId,
+                        sessionTitle: e.title,
+                        turnIndex: 0,
+                        durationMs: e.maxMs,
+                        ttftMs: e.ttftMs,
+                        model: e.model
+                    )
+                }
+            builtLatency = LatencyAnalytics(
+                medianDurationMs: median,
+                p95DurationMs: p95,
+                p99DurationMs: p99,
+                histogram: histogram,
+                slowestTurns: Array(slowest),
+                medianTtftMs: 0,
+                p95TtftMs: 0,
+                ttftByModel: []
+            )
         }
 
         analyticsData = AnalyticsData(
@@ -835,10 +1024,10 @@ final class SessionStore {
             dailyUsage: dailyMap.values.sorted { $0.date < $1.date },
             workspaceCosts: workspaceCostMap.values.sorted { $0.totalCost > $1.totalCost },
             modelUsage: modelMap.values.sorted { $0.turnCount > $1.turnCount },
-            cacheAnalytics: .empty,
-            modelEfficiency: [],
-            dailyModelCost: [],
-            latencyAnalytics: .empty,
+            cacheAnalytics: builtCacheAnalytics,
+            modelEfficiency: builtModelEfficiency,
+            dailyModelCost: builtDailyModelCost,
+            latencyAnalytics: builtLatency,
             vendorAnalytics: .empty,
             parallelToolAnalytics: .empty,
             billingAnalytics: .empty
@@ -1451,5 +1640,40 @@ final class SessionStore {
             durationMs: rootChildren.reduce(0) { $0 + $1.durationMs },
             children: rootChildren
         )
+    }
+}
+
+// MARK: - Analytics helpers (file-private)
+
+/// Returns the value at the given fraction (0–1) in a pre-sorted array using linear interpolation.
+private func analyticsPercentile(_ sorted: [Double], _ fraction: Double) -> Double {
+    guard !sorted.isEmpty else { return 0 }
+    if sorted.count == 1 { return sorted[0] }
+    let pos = fraction * Double(sorted.count - 1)
+    let lo = Int(pos)
+    let hi = min(lo + 1, sorted.count - 1)
+    let t  = pos - Double(lo)
+    return sorted[lo] * (1 - t) + sorted[hi] * t
+}
+
+/// Buckets an array of millisecond durations into human-readable histogram buckets.
+private func analyticsLatencyHistogram(_ sorted: [Double]) -> [LatencyBucket] {
+    let buckets: [(label: String, max: Double)] = [
+        ("<1s",    1_000),
+        ("1–3s",   3_000),
+        ("3–10s",  10_000),
+        ("10–30s", 30_000),
+        ("30–60s", 60_000),
+        (">60s",   .infinity),
+    ]
+    var counts = [String: Int]()
+    for label in buckets.map(\.label) { counts[label] = 0 }
+    for ms in sorted {
+        let label = buckets.first(where: { ms < $0.max })?.label ?? buckets.last!.label
+        counts[label, default: 0] += 1
+    }
+    return buckets.compactMap { b in
+        let c = counts[b.label] ?? 0
+        return c > 0 ? LatencyBucket(label: b.label, count: c) : nil
     }
 }

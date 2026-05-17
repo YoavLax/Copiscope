@@ -3,6 +3,7 @@
 *.xcodeproj/
 DerivedData/
 .DS_Store
+.github/
 
 # Build output
 build/

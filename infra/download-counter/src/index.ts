@@ -109,8 +109,8 @@ export default {
       });
     }
 
-    // GET /:version/Claudoscope.dmg - download redirect
-    const match = url.pathname.match(/^\/([^/]+)\/Claudoscope\.dmg$/);
+    // GET /:version/Copiscope.dmg - download redirect
+    const match = url.pathname.match(/^\/([^/]+)\/Copiscope\.dmg$/);
     if (!match) {
       return new Response("Not Found", { status: 404 });
     }
@@ -123,7 +123,9 @@ export default {
     const ua = request.headers.get("User-Agent") || "";
     const category = classifyUserAgent(ua);
     const type = url.searchParams.get("type") === "update" ? "update" : "download";
-    const redirectUrl = `${GITHUB_BASE}/${version}/Claudoscope.dmg`;
+    // GitHub release asset is named Copiscope-{version}.dmg (e.g. Copiscope-1.1.3.dmg)
+    const releaseVersion = version.startsWith("v") ? version.slice(1) : version;
+    const redirectUrl = `${GITHUB_BASE}/${version}/Copiscope-${releaseVersion}.dmg`;
 
     // Fire-and-forget validation and KV writes
     ctx.waitUntil(
